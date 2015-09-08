@@ -33,6 +33,7 @@ public:
     void load_pix(wxTimerEvent &event);
     void left_click(wxMouseEvent &event);
     void middle_click(wxMouseEvent &event);
+    void thread_done(wxThreadEvent &event);
 
     void load_pixs();
     void load_image();
