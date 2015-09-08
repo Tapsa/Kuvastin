@@ -33,9 +33,6 @@ Peili::Peili(const wxString &title, wxString aP)
     mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
-    //Connect(wxEVT_COMMAND_THREAD_UPDATE, wxThreadEventHandler(Peili::OnThreadUpdate));
-    //Connect(wxEVT_COMMAND_THREAD_COMPLETED, wxThreadEventHandler(Peili::OnThreadCompletion));
-    //Connect(wxEVT_THREAD_CLOSE, wxCloseEventHandler(Peili::OnClose));
 
     wxToolTip::SetDelay(200);
     wxToolTip::SetAutoPop(32700);
@@ -60,12 +57,7 @@ void Peili::load_pix(wxTimerEvent &event)
 {
     timer_pix.Stop();
     if(pixs.IsEmpty()) return;
-    //DoStartThread();
-    {
-        int pix = rng() % pixs.GetCount();
-        pic = wxImage(pixs[pix], wxBITMAP_TYPE_JPEG);
-        mirror->Refresh();
-    }
+    load_image();
     timer_pix.Start(time_pix);
 }
 
@@ -154,12 +146,11 @@ void Peili::middle_click(wxMouseEvent &event)
     OnExit(ce);
 }
 
-/*void Peili::DoStartThread()
+void Peili::load_image()
 {
     pix_loader = new Lataaja(this);
     if(pix_loader->Run() != wxTHREAD_NO_ERROR)
     {
-        wxLogError("Can't create the thread!");
         delete pix_loader;
         pix_loader = NULL;
     }
@@ -167,11 +158,9 @@ void Peili::middle_click(wxMouseEvent &event)
 
 wxThread::ExitCode Lataaja::Entry()
 {
-    while(!TestDestroy())
-    {
-        //wxQueueEvent(kehys, new wxThreadEvent(wxEVT_COMMAND_THREAD_UPDATE));
-    }
-    //wxQueueEvent(kehys, new wxThreadEvent(wxEVT_COMMAND_THREAD_COMPLETED));
+    int pix = kehys->rng() % kehys->pixs.GetCount();
+    kehys->pic = wxImage(kehys->pixs[pix], wxBITMAP_TYPE_JPEG);
+    kehys->mirror->Refresh();
     return (wxThread::ExitCode)0;
 }
 
@@ -180,48 +169,6 @@ Lataaja::~Lataaja()
     wxCriticalSectionLocker enter(kehys->pix_loader_cs);
     kehys->pix_loader = NULL;
 }
-
-void Peili::OnThreadCompletion(wxThreadEvent&)
-{
-    wxMessageOutputDebug().Printf("MYFRAME: Lataaja exited!\n");
-}
-
-void Peili::OnThreadUpdate(wxThreadEvent&)
-{
-    wxMessageOutputDebug().Printf("MYFRAME: Lataaja update...\n");
-}
-
-void Peili::DoPauseThread()
-{
-    wxCriticalSectionLocker enter(pix_loader_cs);
-    if(pix_loader)
-    {
-        if(pix_loader->Pause() != wxTHREAD_NO_ERROR)
-            wxLogError("Can't pause the thread!");
-    }
-}
-
-void Peili::OnClose(wxCloseEvent&)
-{
-    {
-        wxCriticalSectionLocker enter(pix_loader_cs);
-        if(pix_loader)
-        {
-            wxMessageOutputDebug().Printf("MYFRAME: deleting thread");
-            if(pix_loader->Delete() != wxTHREAD_NO_ERROR)
-                wxLogError("Can't delete the thread!");
-        }
-    }
-    while(true)
-    {
-        {
-            wxCriticalSectionLocker enter(pix_loader_cs);
-            if(!pix_loader) break;
-        }
-        wxThread::This()->Sleep(1);
-    }
-    Destroy();
-}*/
 
 wxString format_float(float value)
 {
