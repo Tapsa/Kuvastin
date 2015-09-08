@@ -34,6 +34,7 @@ Peili::Peili(const wxString &title, wxString aP)
     mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
+    Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
 
     wxToolTip::SetDelay(200);
     wxToolTip::SetAutoPop(32700);
@@ -59,7 +60,6 @@ void Peili::load_pix(wxTimerEvent &event)
     timer_pix.Stop();
     if(pixs.IsEmpty()) return;
     load_image();
-    timer_pix.Start(time_pix);
 }
 
 void Peili::draw_pixs(wxPaintEvent &event)
@@ -73,8 +73,6 @@ void Peili::draw_pixs(wxPaintEvent &event)
     }
 #ifndef NDEBUG
     SetStatusText("Images drawn: " + format_int(++drawn_cnt), 0);
-    SetStatusText("", 2);
-    SetStatusText("", 3);
 #endif
     if(pix_loader && pix_loader->IsRunning()) return;
     if(pic.IsOk())
@@ -165,7 +163,7 @@ wxThread::ExitCode Lataaja::Entry()
             kehys->pic = wxBitmap(pic);
         }
     }
-    kehys->mirror->Refresh();
+    wxQueueEvent(kehys, new wxThreadEvent());
     return (wxThread::ExitCode)0;
 }
 
@@ -173,6 +171,12 @@ Lataaja::~Lataaja()
 {
     wxCriticalSectionLocker enter(kehys->pix_loader_cs);
     kehys->pix_loader = NULL;
+}
+
+void Peili::thread_done(wxThreadEvent &event)
+{
+    mirror->Refresh();
+    timer_pix.Start(time_pix);
 }
 
 wxString format_float(float value)
