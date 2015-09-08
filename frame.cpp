@@ -133,6 +133,10 @@ void Peili::left_click(wxMouseEvent &event)
         full_screen = !full_screen;
         ShowFullScreen(full_screen);
     }
+    else
+    {
+        load_pixs();
+    }
     last_click = click;
 }
 
