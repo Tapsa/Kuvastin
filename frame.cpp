@@ -15,6 +15,7 @@ Peili::Peili(const wxString &title, wxString aP)
     time_dir = 60000;
     full_screen = clean_mirror = false;
     last_click = std::chrono::system_clock::now();
+    pix_loader = NULL;
 
     wxPanel *panel = new wxPanel(this);
     mirror = new wxPanel(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
@@ -75,6 +76,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
     SetStatusText("", 2);
     SetStatusText("", 3);
 #endif
+    if(pix_loader && pix_loader->IsRunning()) return;
     if(pic.IsOk())
     {
         int mirrorX, mirrorY;
