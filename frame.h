@@ -6,13 +6,13 @@
 wxString format_float(float);
 wxString format_int(int);
 
-/*class Peili;
+class Peili;
 
 class Lataaja: public wxThread
 {
 public:
     Lataaja(Peili *kehys):
-    wxThread(wxTHREAD_JOINABLE)
+    wxThread()
     {
         this->kehys = kehys;
     }
@@ -21,7 +21,7 @@ public:
 protected:
     virtual ExitCode Entry();
     Peili *kehys;
-};*/
+};
 
 class Peili: public wxFrame
 {
@@ -34,14 +34,8 @@ public:
     void left_click(wxMouseEvent &event);
     void middle_click(wxMouseEvent &event);
 
-    /*void DoStartThread();
-    void DoPauseThread();
-    void DoResumeThread();
-    void OnThreadUpdate(wxThreadEvent&);
-    void OnThreadCompletion(wxThreadEvent&);
-    void OnClose(wxCloseEvent&);*/
-
     void load_pixs();
+    void load_image();
 
     static const wxString APP_VER;
 
@@ -54,10 +48,10 @@ public:
     bool full_screen, clean_mirror;
     std::chrono::time_point<std::chrono::system_clock> last_click;
 
-/*protected:
+protected:
     Lataaja *pix_loader;
     wxCriticalSection pix_loader_cs;
-    friend class Lataaja;*/
+    friend class Lataaja;
 
 private:
     wxPanel *mirror;
