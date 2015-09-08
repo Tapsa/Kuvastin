@@ -47,7 +47,7 @@ public:
     unsigned int drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
     bool full_screen, clean_mirror;
-    std::chrono::time_point<std::chrono::system_clock> last_click;
+    std::chrono::time_point<std::chrono::system_clock> last_click, load_begin;
     int picX, picY;
 
 protected:
