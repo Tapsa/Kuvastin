@@ -17,6 +17,7 @@
 #include <wx/dcbuffer.h>
 #include <wx/dir.h>
 //#include <wx/thread.h>
+#include <wx/log.h>
 
 // #define NDEBUG
 #include <cassert>
