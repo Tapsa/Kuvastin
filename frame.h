@@ -41,12 +41,13 @@ public:
 
     wxString arg_path, dir_pixs;
     wxArrayString pixs;
-    wxImage pic;
+    wxBitmap pic;
     wxTimer timer_pix, timer_dir;
     unsigned int drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
     bool full_screen, clean_mirror;
     std::chrono::time_point<std::chrono::system_clock> last_click;
+    int picX, picY;
 
 protected:
     Lataaja *pix_loader;

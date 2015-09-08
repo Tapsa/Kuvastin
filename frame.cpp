@@ -79,49 +79,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
     if(pix_loader && pix_loader->IsRunning()) return;
     if(pic.IsOk())
     {
-        int mirrorX, mirrorY;
-        mirror->GetClientSize(&mirrorX, &mirrorY);
-        float centerX = mirrorX * 0.5f;
-        float centerY = mirrorY * 0.5f;
-        float picX = pic.GetWidth() * 0.5f;
-        float picY = pic.GetHeight() * 0.5f;
-        int overX = centerX - picX, overY = centerY - picY;
-        if(overX < 0 || overY < 0)
-        {
-            if(overX < overY)
-            {
-                float prop = centerX / picX;
-                picX *= prop;
-                picY *= prop;
-                pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
-            }
-            else
-            {
-                float prop = centerY / picY;
-                picX *= prop;
-                picY *= prop;
-                pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
-            }
-            overX = centerX - picX;
-            overY = centerY - picY;
-        }
-        if(overX > 0)
-        {
-            int rangeX = rng() % (overX * 2);
-            centerX = centerX - overX + rangeX;
-#ifndef NDEBUG
-            SetStatusText("X rand: " + format_int(rangeX), 2);
-#endif
-        }
-        if(overY > 0)
-        {
-            int rangeY = rng() % (overY * 2);
-            centerY = centerY - overY + rangeY;
-#ifndef NDEBUG
-            SetStatusText("Y rand: " + format_int(rangeY), 3);
-#endif
-        }
-        dc.DrawBitmap(wxBitmap(pic), centerX - picX, centerY - picY, true);
+        dc.DrawBitmap(pic, picX, picY, true);
     }
 }
 
@@ -161,7 +119,52 @@ void Peili::load_image()
 wxThread::ExitCode Lataaja::Entry()
 {
     int pix = kehys->rng() % kehys->pixs.GetCount();
-    kehys->pic = wxImage(kehys->pixs[pix], wxBITMAP_TYPE_JPEG);
+    {
+        wxLogNull log; // Kill error popups.
+        wxImage pic(kehys->pixs[pix], wxBITMAP_TYPE_JPEG);
+        if(pic.IsOk())
+        {
+            int mirrorX, mirrorY;
+            kehys->mirror->GetClientSize(&mirrorX, &mirrorY);
+            float centerX = mirrorX * 0.5f;
+            float centerY = mirrorY * 0.5f;
+            float picX = pic.GetWidth() * 0.5f;
+            float picY = pic.GetHeight() * 0.5f;
+            int overX = centerX - picX, overY = centerY - picY;
+            if(overX < 0 || overY < 0)
+            {
+                if(overX < overY)
+                {
+                    float prop = centerX / picX;
+                    picX *= prop;
+                    picY *= prop;
+                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                }
+                else
+                {
+                    float prop = centerY / picY;
+                    picX *= prop;
+                    picY *= prop;
+                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                }
+                overX = centerX - picX;
+                overY = centerY - picY;
+            }
+            if(overX > 0)
+            {
+                int rangeX = kehys->rng() % (overX * 2);
+                centerX = centerX - overX + rangeX;
+            }
+            if(overY > 0)
+            {
+                int rangeY = kehys->rng() % (overY * 2);
+                centerY = centerY - overY + rangeY;
+            }
+            kehys->picX = centerX - picX;
+            kehys->picY = centerY - picY;
+            kehys->pic = wxBitmap(pic);
+        }
+    }
     kehys->mirror->Refresh();
     return (wxThread::ExitCode)0;
 }
