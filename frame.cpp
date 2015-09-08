@@ -13,7 +13,7 @@ Peili::Peili(const wxString &title, wxString aP)
     drawn_cnt = 0;
     time_pix = 1000;
     time_dir = 60000;
-    full_screen = false;
+    full_screen = clean_mirror = false;
     last_click = std::chrono::system_clock::now();
 
     wxPanel *panel = new wxPanel(this);
@@ -72,6 +72,12 @@ void Peili::load_pix(wxTimerEvent &event)
 void Peili::draw_pixs(wxPaintEvent &event)
 {
     wxBufferedPaintDC dc(mirror);
+    if(clean_mirror)
+    {
+        dc.SetBackground(*wxBLACK_BRUSH);
+        dc.Clear();
+        clean_mirror = false;
+    }
 #ifndef NDEBUG
     SetStatusText("Images drawn: " + format_int(++drawn_cnt), 0);
     SetStatusText("", 2);
@@ -128,14 +134,16 @@ void Peili::draw_pixs(wxPaintEvent &event)
 void Peili::left_click(wxMouseEvent &event)
 {
     std::chrono::time_point<std::chrono::system_clock> click = std::chrono::system_clock::now();
-    if(900 > std::chrono::duration_cast<std::chrono::milliseconds>(click - last_click).count())
+    auto time_passed = std::chrono::duration_cast<std::chrono::milliseconds>(click - last_click).count();
+    if(900 > time_passed)
     {
         full_screen = !full_screen;
         ShowFullScreen(full_screen);
     }
-    else
+    else if(3000 > time_passed && time_passed < 1500)
     {
         load_pixs();
+        clean_mirror = true;
     }
     last_click = click;
 }
