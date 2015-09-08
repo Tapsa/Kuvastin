@@ -9,10 +9,12 @@ Peili::Peili(const wxString &title, wxString aP)
     wxBusyCursor WaitCursor;
     SetIcon(wxIcon(AppIcon_xpm));
     arg_path = aP;
-    dir_pixs = "\\\\SAMBADROID\\sdcard\\Pictures\\Twitter";
+    dir_pixs = (arg_path.size() > 3) ? arg_path : "\\\\SAMBADROID\\sdcard\\Pictures\\Twitter";
     drawn_cnt = 0;
     time_pix = 1000;
     time_dir = 60000;
+    full_screen = false;
+    last_click = std::chrono::system_clock::now();
 
     wxPanel *panel = new wxPanel(this);
     mirror = new wxPanel(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
@@ -28,6 +30,8 @@ Peili::Peili(const wxString &title, wxString aP)
     Connect(wxEVT_CLOSE_WINDOW, wxCloseEventHandler(Peili::OnExit));
     mirror->Connect(mirror->GetId(), wxEVT_PAINT, wxPaintEventHandler(Peili::draw_pixs), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_ERASE_BACKGROUND, wxEraseEventHandler(Peili::clear_mirror), NULL, this);
+    mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
+    mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
     //Connect(wxEVT_COMMAND_THREAD_UPDATE, wxThreadEventHandler(Peili::OnThreadUpdate));
     //Connect(wxEVT_COMMAND_THREAD_COMPLETED, wxThreadEventHandler(Peili::OnThreadCompletion));
@@ -43,14 +47,8 @@ void Peili::load_pixs()
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
     wxDir dir(dir_pixs);
     if(!dir.IsOpened()) return;
-    wxString res;
-    pixs.Clear();
-    bool found = dir.GetFirst(&res, "*.jpg");
-    while(found)
-    {
-        pixs.Add(dir_pixs + "\\" + res);
-        found = dir.GetNext(&res);
-    }
+    wxString types = "*.jpg";
+    wxDir::GetAllFiles(dir_pixs, &pixs, types);
 #ifndef NDEBUG
     SetStatusText("Pixs: " + format_int(pixs.GetCount()), 1);
 #endif
@@ -125,6 +123,23 @@ void Peili::draw_pixs(wxPaintEvent &event)
         }
         dc.DrawBitmap(wxBitmap(pic), centerX - picX, centerY - picY, true);
     }
+}
+
+void Peili::left_click(wxMouseEvent &event)
+{
+    std::chrono::time_point<std::chrono::system_clock> click = std::chrono::system_clock::now();
+    if(900 > std::chrono::duration_cast<std::chrono::milliseconds>(click - last_click).count())
+    {
+        full_screen = !full_screen;
+        ShowFullScreen(full_screen);
+    }
+    last_click = click;
+}
+
+void Peili::middle_click(wxMouseEvent &event)
+{
+    wxCloseEvent ce;
+    OnExit(ce);
 }
 
 /*void Peili::DoStartThread()

@@ -31,6 +31,8 @@ public:
     void draw_pixs(wxPaintEvent &event);
     void clear_mirror(wxEraseEvent &event){}
     void load_pix(wxTimerEvent &event);
+    void left_click(wxMouseEvent &event);
+    void middle_click(wxMouseEvent &event);
 
     /*void DoStartThread();
     void DoPauseThread();
@@ -49,6 +51,8 @@ public:
     wxTimer timer_pix, timer_dir;
     unsigned int drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
+    bool full_screen;
+    std::chrono::time_point<std::chrono::system_clock> last_click;
 
 /*protected:
     Lataaja *pix_loader;
