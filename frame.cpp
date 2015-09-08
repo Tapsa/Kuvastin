@@ -46,6 +46,7 @@ void Peili::load_pixs()
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
     wxDir dir(dir_pixs);
     if(!dir.IsOpened()) return;
+    pixs.Clear();
     wxString types = "*.jpg";
     wxDir::GetAllFiles(dir_pixs, &pixs, types);
 #ifndef NDEBUG
@@ -59,7 +60,16 @@ void Peili::load_pix(wxTimerEvent &event)
 {
     timer_pix.Stop();
     if(pixs.IsEmpty()) return;
-    load_image();
+    load_begin = std::chrono::system_clock::now();
+    mirror->Refresh();
+    if(clean_mirror)
+    {
+        timer_pix.Start(time_pix);
+    }
+    else
+    {
+        load_image();
+    }
 }
 
 void Peili::draw_pixs(wxPaintEvent &event)
@@ -74,7 +84,6 @@ void Peili::draw_pixs(wxPaintEvent &event)
 #ifndef NDEBUG
     SetStatusText("Images drawn: " + format_int(++drawn_cnt), 0);
 #endif
-    if(pix_loader && pix_loader->IsRunning()) return;
     if(pic.IsOk())
     {
         dc.DrawBitmap(pic, picX, picY, true);
@@ -126,6 +135,64 @@ wxThread::ExitCode Lataaja::Entry()
             kehys->mirror->GetClientSize(&mirrorX, &mirrorY);
             float centerX = mirrorX * 0.5f;
             float centerY = mirrorY * 0.5f;
+            // Crop edges.
+            {
+                unsigned char val = pic.GetRed(0, 0), max_diff = 12;
+                int width = pic.GetWidth(), height = pic.GetHeight(), density = 8;
+                int crop_top = 0, crop_bottom = 0, crop_left = 0, crop_right = 0;
+                for(int h = 0; h < height; ++h)
+                for(int w = 0; w < width; w += density)
+                {
+                    unsigned char red = pic.GetRed(w, h);
+                    if(abs(val - red) > max_diff)
+                    {
+                        crop_top = h;
+                        goto DONE_TOP;
+                    }
+                }
+DONE_TOP:
+                for(int w = 0; w < width; ++w)
+                for(int h = crop_top; h < height; h += density)
+                {
+                    unsigned char red = pic.GetRed(w, h);
+                    if(abs(val - red) > max_diff)
+                    {
+                        crop_left = w;
+                        goto DONE_LEFT;
+                    }
+                }
+DONE_LEFT:
+                val = pic.GetRed(--width, --height);
+                for(int h = height; h > 0; --h)
+                for(int w = width; w > 0; w -= density)
+                {
+                    unsigned char red = pic.GetRed(w, h);
+                    if(abs(val - red) > max_diff)
+                    {
+                        crop_bottom = height - h + 1;
+                        goto DONE_BOTTOM;
+                    }
+                }
+DONE_BOTTOM:
+                for(int w = width; w > 0; --w)
+                for(int h = height - crop_bottom; h > 0; h -= density)
+                {
+                    unsigned char red = pic.GetRed(w, h);
+                    if(abs(val - red) > max_diff)
+                    {
+                        crop_right = width - w + 1;
+                        goto DONE_RIGHT;
+                    }
+                }
+DONE_RIGHT:
+                if(crop_top || crop_bottom || crop_left || crop_right)
+                {
+                    wxSize crop_size = pic.GetSize();
+                    crop_size.DecBy(crop_left + crop_right, crop_top + crop_bottom);
+                    wxRect crop(crop_left, crop_top, crop_size.GetWidth(), crop_size.GetHeight());
+                    pic = pic.GetSubImage(crop);
+                }
+            }
             float picX = pic.GetWidth() * 0.5f;
             float picY = pic.GetHeight() * 0.5f;
             int overX = centerX - picX, overY = centerY - picY;
@@ -175,8 +242,8 @@ Lataaja::~Lataaja()
 
 void Peili::thread_done(wxThreadEvent &event)
 {
-    mirror->Refresh();
-    timer_pix.Start(time_pix);
+    int load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
+    timer_pix.Start(load_time < time_pix ? time_pix - load_time : 0);
 }
 
 wxString format_float(float value)
