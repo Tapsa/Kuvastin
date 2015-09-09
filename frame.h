@@ -31,6 +31,7 @@ public:
     void draw_pixs(wxPaintEvent &event);
     void clear_mirror(wxEraseEvent &event){}
     void load_pix(wxTimerEvent &event);
+    void load_dir(wxTimerEvent &event);
     void left_click(wxMouseEvent &event);
     void middle_click(wxMouseEvent &event);
     void thread_done(wxThreadEvent &event);
@@ -40,7 +41,7 @@ public:
 
     static const wxString APP_VER;
 
-    wxString arg_path, dir_pixs;
+    wxString arg_path, dir_pixs, pic_types;
     wxArrayString pixs;
     wxBitmap pic;
     wxTimer timer_pix, timer_dir;
@@ -52,7 +53,7 @@ public:
 
 protected:
     Lataaja *pix_loader;
-    wxCriticalSection pix_loader_cs;
+    wxCriticalSection pix_loader_cs, dir_loader_cs;
     friend class Lataaja;
 
 private:
