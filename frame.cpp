@@ -10,6 +10,7 @@ Peili::Peili(const wxString &title, wxString aP)
     SetIcon(wxIcon(AppIcon_xpm));
     arg_path = aP;
     dir_pixs = (arg_path.size() > 3) ? arg_path : "\\\\SAMBADROID\\sdcard\\Pictures\\Twitter";
+    pic_types = "*.jpg";
     drawn_cnt = 0;
     time_pix = 1000;
     time_dir = 60000;
@@ -34,6 +35,7 @@ Peili::Peili(const wxString &title, wxString aP)
     mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
+    timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), NULL, this);
     Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
 
     wxToolTip::SetDelay(200);
@@ -44,16 +46,25 @@ Peili::Peili(const wxString &title, wxString aP)
 void Peili::load_pixs()
 {
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    wxDir dir(dir_pixs);
-    if(!dir.IsOpened()) return;
-    pixs.Clear();
-    wxString types = "*.jpg";
-    wxDir::GetAllFiles(dir_pixs, &pixs, types);
+    {
+        wxCriticalSectionLocker enter(dir_loader_cs);
+        wxDir dir(dir_pixs);
+        if(!dir.IsOpened()) return;
+        pixs.Clear();
+        wxDir::GetAllFiles(dir_pixs, &pixs, pic_types);
+    }
 #ifndef NDEBUG
     SetStatusText("Pixs: " + format_int(pixs.GetCount()), 1);
 #endif
     wxTimerEvent te;
     load_pix(te);
+    timer_dir.Start(time_dir);
+}
+
+void Peili::load_dir(wxTimerEvent &event)
+{
+    timer_dir.Stop();
+    load_pixs();
 }
 
 void Peili::load_pix(wxTimerEvent &event)
@@ -62,14 +73,7 @@ void Peili::load_pix(wxTimerEvent &event)
     if(pixs.IsEmpty()) return;
     load_begin = std::chrono::system_clock::now();
     mirror->Refresh();
-    if(clean_mirror)
-    {
-        timer_pix.Start(time_pix);
-    }
-    else
-    {
-        load_image();
-    }
+    load_image();
 }
 
 void Peili::draw_pixs(wxPaintEvent &event)
@@ -125,110 +129,120 @@ void Peili::load_image()
 
 wxThread::ExitCode Lataaja::Entry()
 {
-    int pix = kehys->rng() % kehys->pixs.GetCount();
+    int pix;
+    wxImage pic;
     {
-        wxLogNull log; // Kill error popups.
-        wxImage pic(kehys->pixs[pix], wxBITMAP_TYPE_JPEG);
-        if(pic.IsOk())
+        wxCriticalSectionLocker enter(kehys->dir_loader_cs);
+        pix = kehys->rng() % kehys->pixs.GetCount();
         {
-            int mirrorX, mirrorY;
-            kehys->mirror->GetClientSize(&mirrorX, &mirrorY);
-            float centerX = mirrorX * 0.5f;
-            float centerY = mirrorY * 0.5f;
-            // Crop edges.
-            {
-                unsigned char val = pic.GetRed(0, 0), max_diff = 12;
-                int width = pic.GetWidth(), height = pic.GetHeight(), density = 8;
-                int crop_top = 0, crop_bottom = 0, crop_left = 0, crop_right = 0;
-                for(int h = 0; h < height; ++h)
-                for(int w = 0; w < width; w += density)
-                {
-                    unsigned char red = pic.GetRed(w, h);
-                    if(abs(val - red) > max_diff)
-                    {
-                        crop_top = h;
-                        goto DONE_TOP;
-                    }
-                }
-DONE_TOP:
-                for(int w = 0; w < width; ++w)
-                for(int h = crop_top; h < height; h += density)
-                {
-                    unsigned char red = pic.GetRed(w, h);
-                    if(abs(val - red) > max_diff)
-                    {
-                        crop_left = w;
-                        goto DONE_LEFT;
-                    }
-                }
-DONE_LEFT:
-                val = pic.GetRed(--width, --height);
-                for(int h = height; h > 0; --h)
-                for(int w = width; w > 0; w -= density)
-                {
-                    unsigned char red = pic.GetRed(w, h);
-                    if(abs(val - red) > max_diff)
-                    {
-                        crop_bottom = height - h + 1;
-                        goto DONE_BOTTOM;
-                    }
-                }
-DONE_BOTTOM:
-                for(int w = width; w > 0; --w)
-                for(int h = height - crop_bottom; h > 0; h -= density)
-                {
-                    unsigned char red = pic.GetRed(w, h);
-                    if(abs(val - red) > max_diff)
-                    {
-                        crop_right = width - w + 1;
-                        goto DONE_RIGHT;
-                    }
-                }
-DONE_RIGHT:
-                if(crop_top || crop_bottom || crop_left || crop_right)
-                {
-                    wxSize crop_size = pic.GetSize();
-                    crop_size.DecBy(crop_left + crop_right, crop_top + crop_bottom);
-                    wxRect crop(crop_left, crop_top, crop_size.GetWidth(), crop_size.GetHeight());
-                    pic = pic.GetSubImage(crop);
-                }
-            }
-            float picX = pic.GetWidth() * 0.5f;
-            float picY = pic.GetHeight() * 0.5f;
-            int overX = centerX - picX, overY = centerY - picY;
-            if(overX < 0 || overY < 0)
-            {
-                if(overX < overY)
-                {
-                    float prop = centerX / picX;
-                    picX *= prop;
-                    picY *= prop;
-                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
-                }
-                else
-                {
-                    float prop = centerY / picY;
-                    picX *= prop;
-                    picY *= prop;
-                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
-                }
-                overX = centerX - picX;
-                overY = centerY - picY;
-            }
-            if(overX > 0)
-            {
-                int rangeX = kehys->rng() % (overX * 2);
-                centerX = centerX - overX + rangeX;
-            }
-            if(overY > 0)
-            {
-                int rangeY = kehys->rng() % (overY * 2);
-                centerY = centerY - overY + rangeY;
-            }
-            kehys->picX = centerX - picX;
-            kehys->picY = centerY - picY;
-            kehys->pic = wxBitmap(pic);
+            wxLogNull log; // Kill error popups.
+            pic = wxImage(kehys->pixs[pix], wxBITMAP_TYPE_JPEG);
         }
+    }
+    if(pic.IsOk())
+    {
+        int mirrorX, mirrorY;
+        kehys->mirror->GetClientSize(&mirrorX, &mirrorY);
+        float centerX = mirrorX * 0.5f;
+        float centerY = mirrorY * 0.5f;
+        // Crop edges.
+        {
+            unsigned char val = pic.GetRed(0, 0), max_diff = 12;
+            int width = pic.GetWidth(), height = pic.GetHeight(), density = 8;
+            int crop_top = 0, crop_bottom = 0, crop_left = 0, crop_right = 0;
+            for(int h = 0; h < height; ++h)
+            for(int w = 0; w < width; w += density)
+            {
+                unsigned char red = pic.GetRed(w, h);
+                if(abs(val - red) > max_diff)
+                {
+                    crop_top = h;
+                    goto DONE_TOP;
+                }
+            }
+DONE_TOP:
+            for(int w = 0; w < width; ++w)
+            for(int h = crop_top; h < height; h += density)
+            {
+                unsigned char red = pic.GetRed(w, h);
+                if(abs(val - red) > max_diff)
+                {
+                    crop_left = w;
+                    goto DONE_LEFT;
+                }
+            }
+DONE_LEFT:
+            val = pic.GetRed(--width, --height);
+            for(int h = height; h > 0; --h)
+            for(int w = width; w > 0; w -= density)
+            {
+                unsigned char red = pic.GetRed(w, h);
+                if(abs(val - red) > max_diff)
+                {
+                    crop_bottom = height - h + 1;
+                    goto DONE_BOTTOM;
+                }
+            }
+DONE_BOTTOM:
+            for(int w = width; w > 0; --w)
+            for(int h = height - crop_bottom; h > 0; h -= density)
+            {
+                unsigned char red = pic.GetRed(w, h);
+                if(abs(val - red) > max_diff)
+                {
+                    crop_right = width - w + 1;
+                    goto DONE_RIGHT;
+                }
+            }
+DONE_RIGHT:
+            if(crop_top || crop_bottom || crop_left || crop_right)
+            {
+                wxSize crop_size = pic.GetSize();
+                crop_size.DecBy(crop_left + crop_right, crop_top + crop_bottom);
+                wxRect crop(crop_left, crop_top, crop_size.GetWidth(), crop_size.GetHeight());
+                pic = pic.GetSubImage(crop);
+            }
+        }
+        float picX = pic.GetWidth() * 0.5f;
+        float picY = pic.GetHeight() * 0.5f;
+        if((picX <= 480 && picY <= 480) || picX <= 320 || picY <= 320)
+        {
+            wxCriticalSectionLocker enter(kehys->dir_loader_cs);
+            wxRemoveFile(kehys->pixs[pix]);
+        }
+        int overX = centerX - picX, overY = centerY - picY;
+        if(overX < 0 || overY < 0)
+        {
+            if(overX < overY)
+            {
+                float prop = centerX / picX;
+                picX *= prop;
+                picY *= prop;
+                pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+            }
+            else
+            {
+                float prop = centerY / picY;
+                picX *= prop;
+                picY *= prop;
+                pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+            }
+            overX = centerX - picX;
+            overY = centerY - picY;
+        }
+        if(overX > 0)
+        {
+            int rangeX = kehys->rng() % (overX * 2);
+            centerX = centerX - overX + rangeX;
+        }
+        if(overY > 0)
+        {
+            int rangeY = kehys->rng() % (overY * 2);
+            centerY = centerY - overY + rangeY;
+        }
+        kehys->picX = centerX - picX;
+        kehys->picY = centerY - picY;
+        kehys->pic = wxBitmap(pic);
     }
     wxQueueEvent(kehys, new wxThreadEvent());
     return (wxThread::ExitCode)0;
