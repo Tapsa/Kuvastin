@@ -34,6 +34,7 @@ public:
     void load_dir(wxTimerEvent &event);
     void left_click(wxMouseEvent &event);
     void middle_click(wxMouseEvent &event);
+    void right_click(wxMouseEvent &event);
     void thread_done(wxThreadEvent &event);
 
     void load_pixs();
@@ -47,9 +48,9 @@ public:
     wxTimer timer_pix, timer_dir;
     unsigned int drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
-    bool full_screen, clean_mirror;
+    bool full_screen, clean_mirror, unique, dupl_found;
     std::chrono::time_point<std::chrono::system_clock> last_click, load_begin;
-    int picX, picY;
+    int pix, picX, picY;
 
 protected:
     Lataaja *pix_loader;
@@ -58,6 +59,7 @@ protected:
 
 private:
     wxPanel *mirror;
+    std::set<std::string> unique_pixs;
 };
 
 #endif
