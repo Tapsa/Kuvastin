@@ -14,7 +14,7 @@ Peili::Peili(const wxString &title, wxString aP)
     drawn_cnt = 0;
     time_pix = 1000;
     time_dir = 60000;
-    full_screen = clean_mirror = false;
+    full_screen = clean_mirror = unique = dupl_found = false;
     last_click = std::chrono::system_clock::now();
     pix_loader = NULL;
 
@@ -34,6 +34,7 @@ Peili::Peili(const wxString &title, wxString aP)
     mirror->Connect(mirror->GetId(), wxEVT_ERASE_BACKGROUND, wxEraseEventHandler(Peili::clear_mirror), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
+    mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
     timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), NULL, this);
     Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
@@ -73,7 +74,11 @@ void Peili::load_pix(wxTimerEvent &event)
     if(pixs.IsEmpty()) return;
     load_begin = std::chrono::system_clock::now();
     mirror->Refresh();
-    load_image();
+    if(!unique)
+    {
+        pix = rng() % pixs.GetCount();
+        load_image();
+    }
 }
 
 void Peili::draw_pixs(wxPaintEvent &event)
@@ -117,6 +122,16 @@ void Peili::middle_click(wxMouseEvent &event)
     OnExit(ce);
 }
 
+void Peili::right_click(wxMouseEvent &event)
+{
+    timer_pix.Stop();
+    unique_pixs.clear();
+    pix = 0;
+    unique = true;
+    pixs.Sort();
+    load_image();
+}
+
 void Peili::load_image()
 {
     pix_loader = new Lataaja(this);
@@ -129,14 +144,12 @@ void Peili::load_image()
 
 wxThread::ExitCode Lataaja::Entry()
 {
-    int pix;
     wxImage pic;
     {
         wxCriticalSectionLocker enter(kehys->dir_loader_cs);
-        pix = kehys->rng() % kehys->pixs.GetCount();
         {
             wxLogNull log; // Kill error popups.
-            pic = wxImage(kehys->pixs[pix], wxBITMAP_TYPE_JPEG);
+            pic = wxImage(kehys->pixs[kehys->pix], wxBITMAP_TYPE_JPEG);
         }
     }
     if(pic.IsOk())
@@ -205,44 +218,66 @@ DONE_RIGHT:
         }
         float picX = pic.GetWidth() * 0.5f;
         float picY = pic.GetHeight() * 0.5f;
-        if((picX <= 480 && picY <= 480) || picX <= 320 || picY <= 320)
+        // Check if duplicate.
+        if(kehys->unique)
         {
-            wxCriticalSectionLocker enter(kehys->dir_loader_cs);
-            wxRemoveFile(kehys->pixs[pix]);
-        }
-        int overX = centerX - picX, overY = centerY - picY;
-        if(overX < 0 || overY < 0)
-        {
-            if(overX < overY)
+            int gap = pic.GetWidth() * 0.0625f;
+            std::string check = "";
+            for(int w=0; w < pic.GetWidth(); w += gap)
+            for(int h=0; h < pic.GetHeight(); h += gap)
+            check += (unsigned char)(32 + int(float(pic.GetRed(w, h)) * 0.37f));
+            if(kehys->unique_pixs.count(check))
             {
-                float prop = centerX / picX;
-                picX *= prop;
-                picY *= prop;
-                pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                kehys->dupl_found = true;
+                //goto REMOVE_PIC;
             }
             else
             {
-                float prop = centerY / picY;
-                picX *= prop;
-                picY *= prop;
-                pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                kehys->unique_pixs.insert(check);
             }
-            overX = centerX - picX;
-            overY = centerY - picY;
         }
-        if(overX > 0)
+        if((picX <= 480 && picY <= 480) || picX <= 320 || picY <= 320)
         {
-            int rangeX = kehys->rng() % (overX * 2);
-            centerX = centerX - overX + rangeX;
+//REMOVE_PIC:
+            wxCriticalSectionLocker enter(kehys->dir_loader_cs);
+            wxRemoveFile(kehys->pixs[kehys->pix]);
         }
-        if(overY > 0)
+        if(!kehys->unique || kehys->dupl_found)
         {
-            int rangeY = kehys->rng() % (overY * 2);
-            centerY = centerY - overY + rangeY;
+            int overX = centerX - picX, overY = centerY - picY;
+            if(overX < 0 || overY < 0)
+            {
+                if(overX < overY)
+                {
+                    float prop = centerX / picX;
+                    picX *= prop;
+                    picY *= prop;
+                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                }
+                else
+                {
+                    float prop = centerY / picY;
+                    picX *= prop;
+                    picY *= prop;
+                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                }
+                overX = centerX - picX;
+                overY = centerY - picY;
+            }
+            if(overX > 0)
+            {
+                int rangeX = kehys->rng() % (overX * 2);
+                centerX = centerX - overX + rangeX;
+            }
+            if(overY > 0)
+            {
+                int rangeY = kehys->rng() % (overY * 2);
+                centerY = centerY - overY + rangeY;
+            }
+            kehys->picX = centerX - picX;
+            kehys->picY = centerY - picY;
+            kehys->pic = wxBitmap(pic);
         }
-        kehys->picX = centerX - picX;
-        kehys->picY = centerY - picY;
-        kehys->pic = wxBitmap(pic);
     }
     wxQueueEvent(kehys, new wxThreadEvent());
     return (wxThread::ExitCode)0;
@@ -256,8 +291,31 @@ Lataaja::~Lataaja()
 
 void Peili::thread_done(wxThreadEvent &event)
 {
-    int load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
-    timer_pix.Start(load_time < time_pix ? time_pix - load_time : 0);
+    if(unique)
+    {
+#ifndef NDEBUG
+        SetStatusText("Duplicate check done for " + format_int(pix), 0);
+#endif
+        if(dupl_found)
+        {
+            mirror->Refresh();
+            dupl_found = false;
+        }
+        if(++pix < pixs.GetCount())
+        {
+            load_image();
+        }
+        else
+        {
+            unique = false;
+            load_pixs();
+        }
+    }
+    else
+    {
+        int load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
+        timer_pix.Start(load_time < time_pix ? time_pix - load_time : 0);
+    }
 }
 
 wxString format_float(float value)
