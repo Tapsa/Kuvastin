@@ -26,7 +26,7 @@ protected:
 class Peili: public wxFrame
 {
 public:
-    Peili(const wxString &title, wxString aP = wxEmptyString);
+    Peili(const wxString &title, wxString aP = wxEmptyString, bool allow_del = true);
     void OnExit(wxCloseEvent &event);
     void draw_pixs(wxPaintEvent &event);
     void clear_mirror(wxEraseEvent &event){}
@@ -48,7 +48,7 @@ public:
     wxTimer timer_pix, timer_dir;
     unsigned int drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
-    bool full_screen, clean_mirror, unique, dupl_found;
+    bool full_screen, clean_mirror, unique, dupl_found, allow_del;
     std::chrono::time_point<std::chrono::system_clock> last_click, load_begin;
     int pix, picX, picY;
 
