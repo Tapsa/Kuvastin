@@ -8,7 +8,7 @@ bool Kuvastin::OnInit()
     wxImage::AddHandler(new wxJPEGHandler);
     wxString argPath = (wxApp::argc > 1) ? wxApp::argv[1] : "";
 
-    window = new Peili("Kuvastin " + Peili::APP_VER, argPath);
+    window = new Peili("Kuvastin " + Peili::APP_VER, argPath, wxApp::argc != 3);
     SetTopWindow(window);
     window->SetSize(900, 720);
     window->Show(true);

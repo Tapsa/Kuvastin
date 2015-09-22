@@ -1,14 +1,15 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2015.9.8";
+const wxString Peili::APP_VER = "2015.9.22";
 
-Peili::Peili(const wxString &title, wxString aP)
+Peili::Peili(const wxString &title, wxString aP, bool allowDel)
 : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT)
 {
     wxBusyCursor WaitCursor;
     SetIcon(wxIcon(AppIcon_xpm));
     arg_path = aP;
+    allow_del = allowDel;
     dir_pixs = (arg_path.size() > 3) ? arg_path : "\\\\SAMBADROID\\sdcard\\Pictures\\Twitter";
     pic_types = "*.jpg";
     drawn_cnt = 0;
@@ -34,7 +35,7 @@ Peili::Peili(const wxString &title, wxString aP)
     mirror->Connect(mirror->GetId(), wxEVT_ERASE_BACKGROUND, wxEraseEventHandler(Peili::clear_mirror), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
-    mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), NULL, this);
+    //mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
     timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), NULL, this);
     Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
@@ -129,6 +130,7 @@ void Peili::right_click(wxMouseEvent &event)
     pix = 0;
     unique = true;
     pixs.Sort();
+    wxMkdir(arg_path + "\\bin");
     load_image();
 }
 
@@ -218,7 +220,7 @@ DONE_RIGHT:
         }
         float picX = pic.GetWidth() * 0.5f;
         float picY = pic.GetHeight() * 0.5f;
-        // Check if duplicate.
+        // Check if duplicate. Still broken.
         if(kehys->unique)
         {
             int gap = pic.GetWidth() * 0.0625f;
@@ -229,16 +231,19 @@ DONE_RIGHT:
             if(kehys->unique_pixs.count(check))
             {
                 kehys->dupl_found = true;
-                //goto REMOVE_PIC;
+                wxString old_name = kehys->pixs[kehys->pix];
+                int split = 1 + old_name.Find('\\', true);
+                wxString new_name = old_name.Mid(0, split) + "bin\\" + old_name.Mid(split);
+                wxCriticalSectionLocker enter(kehys->dir_loader_cs);
+                wxRenameFile(old_name, new_name);
             }
             else
             {
                 kehys->unique_pixs.insert(check);
             }
         }
-        if((picX <= 480 && picY <= 480) || picX <= 320 || picY <= 320)
+        if(kehys->allow_del && ((picX < 480 && picY < 480) || picX < 320 || picY < 320))
         {
-//REMOVE_PIC:
             wxCriticalSectionLocker enter(kehys->dir_loader_cs);
             wxRemoveFile(kehys->pixs[kehys->pix]);
         }
