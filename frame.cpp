@@ -142,16 +142,12 @@ void Peili::keyboard(wxKeyEvent &event)
     {
         case 'a':
         {
-            if(inspect)
-            {
-                ++inspect_file;
-            }
-            else
+            if(!browsing)
             {
                 inspect = true;
                 inspect_file = shown_pixs.begin();
             }
-            if(inspect_file != shown_pixs.end())
+            if(++inspect_file != shown_pixs.end())
             {
                 filename = *inspect_file;
             }
@@ -163,11 +159,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(browsing)
             {
-                if(inspect)
-                {
-                    --inspect_file;
-                }
-                if(inspect_file != shown_pixs.end())
+                if(--inspect_file != shown_pixs.end())
                 {
                     filename = *inspect_file;
                 }
@@ -188,7 +180,16 @@ void Peili::keyboard(wxKeyEvent &event)
         break;
         case ' ':
         {
-            inspect = true;
+            if(!inspect)
+            {
+                inspect = true;
+                inspect_file = shown_pixs.begin();
+                if(++inspect_file != shown_pixs.end())
+                {
+                    filename = *inspect_file;
+                }
+                browsing = true;
+            }
             wxExecute("Explorer /select," + filename);
         }
         break;
