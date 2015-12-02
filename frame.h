@@ -36,21 +36,24 @@ public:
     void middle_click(wxMouseEvent &event);
     void right_click(wxMouseEvent &event);
     void thread_done(wxThreadEvent &event);
+    void keyboard(wxKeyEvent &event);
 
     void load_pixs();
     void load_image();
 
     static const wxString APP_VER;
 
-    wxString arg_path, dir_pixs, pic_types;
+    wxString arg_path, dir_pixs, pic_types, filename;
     wxArrayString pixs;
     wxBitmap pic;
     wxTimer timer_pix, timer_dir;
     unsigned int drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
-    bool full_screen, clean_mirror, unique, dupl_found, allow_del;
+    bool full_screen, clean_mirror, unique, dupl_found, allow_del, inspect, browsing;
     std::chrono::time_point<std::chrono::system_clock> last_click, load_begin;
     int pix, picX, picY;
+    std::list<wxString> shown_pixs;
+    std::list<wxString>::iterator inspect_file;
 
 protected:
     Lataaja *pix_loader;
