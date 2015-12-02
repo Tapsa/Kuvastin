@@ -15,7 +15,7 @@ Peili::Peili(const wxString &title, wxString aP, bool allowDel)
     drawn_cnt = 0;
     time_pix = 1000;
     time_dir = 60000;
-    full_screen = clean_mirror = unique = dupl_found = false;
+    full_screen = clean_mirror = unique = dupl_found = inspect = browsing = false;
     last_click = std::chrono::system_clock::now();
     pix_loader = NULL;
 
@@ -36,6 +36,7 @@ Peili::Peili(const wxString &title, wxString aP, bool allowDel)
     mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
     mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
     //mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), NULL, this);
+    mirror->Connect(mirror->GetId(), wxEVT_CHAR, wxKeyEventHandler(Peili::keyboard), NULL, this);
     timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
     timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), NULL, this);
     Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
@@ -75,9 +76,9 @@ void Peili::load_pix(wxTimerEvent &event)
     if(pixs.IsEmpty()) return;
     load_begin = std::chrono::system_clock::now();
     mirror->Refresh();
-    if(!unique)
+    if(!unique && !inspect)
     {
-        pix = rng() % pixs.GetCount();
+        filename = pixs[rng() % pixs.GetCount()];
         load_image();
     }
 }
@@ -131,7 +132,67 @@ void Peili::right_click(wxMouseEvent &event)
     unique = true;
     pixs.Sort();
     wxMkdir(arg_path + "\\bin");
+    filename = pixs[0];
     load_image();
+}
+
+void Peili::keyboard(wxKeyEvent &event)
+{
+    switch(event.GetKeyCode())
+    {
+        case 'a':
+        {
+            if(inspect)
+            {
+                ++inspect_file;
+            }
+            else
+            {
+                inspect = true;
+                inspect_file = shown_pixs.begin();
+            }
+            if(inspect_file != shown_pixs.end())
+            {
+                filename = *inspect_file;
+            }
+            load_image();
+            browsing = true;
+        }
+        break;
+        case 'd':
+        {
+            if(browsing)
+            {
+                if(inspect)
+                {
+                    --inspect_file;
+                }
+                if(inspect_file != shown_pixs.end())
+                {
+                    filename = *inspect_file;
+                }
+            }
+            load_image();
+        }
+        break;
+        case 'w':
+        {
+            inspect = browsing = false;
+            load_pixs();
+        }
+        break;
+        case 's':
+        {
+            inspect = true;
+        }
+        break;
+        case ' ':
+        {
+            inspect = true;
+            wxExecute("Explorer /select," + filename);
+        }
+        break;
+    }
 }
 
 void Peili::load_image()
@@ -151,7 +212,7 @@ wxThread::ExitCode Lataaja::Entry()
         wxCriticalSectionLocker enter(kehys->dir_loader_cs);
         {
             wxLogNull log; // Kill error popups.
-            pic = wxImage(kehys->pixs[kehys->pix], wxBITMAP_TYPE_JPEG);
+            pic = wxImage(kehys->filename, wxBITMAP_TYPE_JPEG);
         }
     }
     if(pic.IsOk())
@@ -231,7 +292,7 @@ DONE_RIGHT:
             if(kehys->unique_pixs.count(check))
             {
                 kehys->dupl_found = true;
-                wxString old_name = kehys->pixs[kehys->pix];
+                wxString old_name = kehys->filename;
                 int split = 1 + old_name.Find('\\', true);
                 wxString new_name = old_name.Mid(0, split) + "bin\\" + old_name.Mid(split);
                 wxCriticalSectionLocker enter(kehys->dir_loader_cs);
@@ -245,7 +306,7 @@ DONE_RIGHT:
         if(kehys->allow_del && ((picX < 480 && picY < 480) || picX < 320 || picY < 320))
         {
             wxCriticalSectionLocker enter(kehys->dir_loader_cs);
-            wxRemoveFile(kehys->pixs[kehys->pix]);
+            wxRemoveFile(kehys->filename);
         }
         if(!kehys->unique || kehys->dupl_found)
         {
@@ -296,7 +357,11 @@ Lataaja::~Lataaja()
 
 void Peili::thread_done(wxThreadEvent &event)
 {
-    if(unique)
+    if(inspect)
+    {
+        mirror->Refresh();
+    }
+    else if(unique)
     {
 #ifndef NDEBUG
         SetStatusText("Duplicate check done for " + format_int(pix), 0);
@@ -308,6 +373,7 @@ void Peili::thread_done(wxThreadEvent &event)
         }
         if(++pix < pixs.GetCount())
         {
+            filename = pixs[pix];
             load_image();
         }
         else
@@ -319,7 +385,12 @@ void Peili::thread_done(wxThreadEvent &event)
     else
     {
         int load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
+        shown_pixs.emplace_front(filename);
         timer_pix.Start(load_time < time_pix ? time_pix - load_time : 0);
+        if(shown_pixs.size() > 0xFF)
+        {
+            shown_pixs.pop_back();
+        }
     }
 }
 

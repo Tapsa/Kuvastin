@@ -7,6 +7,7 @@
 #include <chrono>
 #include <random>
 #include <set>
+#include <list>
 //#include <boost/lexical_cast.hpp>
 #include <wx/wx.h>
 #include <wx/fileconf.h>
