@@ -26,7 +26,7 @@ protected:
 class Peili: public wxFrame
 {
 public:
-    Peili(const wxString &title, wxString aP = wxEmptyString, bool allow_del = true);
+    Peili(const wxString&, const wxArrayString&, const wxString&);
     void OnExit(wxCloseEvent &event);
     void draw_pixs(wxPaintEvent &event);
     void clear_mirror(wxEraseEvent &event){}
@@ -43,17 +43,18 @@ public:
 
     static const wxString APP_VER;
 
-    wxString arg_path, dir_pixs, pic_types, filename;
-    wxArrayString pixs;
+    wxString pic_types, filename;
+    wxArrayString pixs, dirs_pixs;
     wxBitmap pic;
     wxTimer timer_pix, timer_dir;
-    unsigned int drawn_cnt, time_pix, time_dir;
+    size_t drawn_cnt, time_pix, time_dir;
     std::minstd_rand0 rng;
-    bool full_screen, clean_mirror, unique, dupl_found, allow_del, inspect, browsing;
+    bool full_screen, clean_mirror, unique, dupl_found, allow_del, inspect, browsing, equal_mix;
     std::chrono::time_point<std::chrono::system_clock> last_click, load_begin;
     int pix, picX, picY;
     std::list<wxString> shown_pixs;
     std::list<wxString>::iterator inspect_file;
+    std::vector<size_t> path_ranges;
 
 protected:
     Lataaja *pix_loader;

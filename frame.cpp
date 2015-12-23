@@ -1,20 +1,25 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2015.9.22";
+const wxString Peili::APP_VER = "2015.12.17";
 
-Peili::Peili(const wxString &title, wxString aP, bool allowDel)
+Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings)
 : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT)
 {
     wxBusyCursor WaitCursor;
     SetIcon(wxIcon(AppIcon_xpm));
-    arg_path = aP;
-    allow_del = allowDel;
-    dir_pixs = (arg_path.size() > 3) ? arg_path : "\\\\SAMBADROID\\sdcard\\Pictures\\Twitter";
+    allow_del = equal_mix = false;
+    if(1 < settings.size())
+    {
+        if("-eqmix" == settings) equal_mix = true;
+        else if("-emad" == settings) equal_mix = allow_del = true;
+        else if("-autodel" == settings) allow_del = true;
+    }
+    dirs_pixs = paths;
     pic_types = "*.jpg";
     drawn_cnt = 0;
     time_pix = 1000;
-    time_dir = 60000;
+    time_dir = 144000;
     full_screen = clean_mirror = unique = dupl_found = inspect = browsing = false;
     last_click = std::chrono::system_clock::now();
     pix_loader = NULL;
@@ -51,10 +56,18 @@ void Peili::load_pixs()
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
     {
         wxCriticalSectionLocker enter(dir_loader_cs);
-        wxDir dir(dir_pixs);
-        if(!dir.IsOpened()) return;
+        size_t dirs_size = dirs_pixs.size();
         pixs.Clear();
-        wxDir::GetAllFiles(dir_pixs, &pixs, pic_types);
+        path_ranges = std::vector<size_t>(2 * dirs_size, 0);
+        for(size_t i = 0; i < dirs_size; ++i)
+        {
+            path_ranges[i] = pixs.size();
+            if(wxDir(dirs_pixs[i]).IsOpened())
+            {
+                wxDir::GetAllFiles(dirs_pixs[i], &pixs, pic_types);
+                path_ranges[dirs_size + i] = pixs.size() - path_ranges[i];
+            }
+        }
     }
 #ifndef NDEBUG
     SetStatusText("Pixs: " + format_int(pixs.GetCount()), 1);
@@ -78,7 +91,14 @@ void Peili::load_pix(wxTimerEvent &event)
     mirror->Refresh();
     if(!unique && !inspect)
     {
-        filename = pixs[rng() % pixs.GetCount()];
+        size_t rng_beg = 0, rng_cnt = pixs.GetCount();
+        if(equal_mix)
+        {
+            size_t ranges_cnt = path_ranges.size() / 2, slot = rng() % ranges_cnt;
+            rng_cnt = path_ranges[ranges_cnt + slot];
+            rng_beg = path_ranges[slot];
+        }
+        filename = pixs[rng_beg + rng() % rng_cnt];
         load_image();
     }
 }
@@ -124,7 +144,7 @@ void Peili::middle_click(wxMouseEvent &event)
     OnExit(ce);
 }
 
-void Peili::right_click(wxMouseEvent &event)
+/*void Peili::right_click(wxMouseEvent &event)
 {
     timer_pix.Stop();
     unique_pixs.clear();
@@ -134,7 +154,7 @@ void Peili::right_click(wxMouseEvent &event)
     wxMkdir(arg_path + "\\bin");
     filename = pixs[0];
     load_image();
-}
+}*/
 
 void Peili::keyboard(wxKeyEvent &event)
 {
@@ -385,7 +405,7 @@ void Peili::thread_done(wxThreadEvent &event)
     }
     else
     {
-        int load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
+        size_t load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
         shown_pixs.emplace_front(filename);
         timer_pix.Start(load_time < time_pix ? time_pix - load_time : 0);
         if(shown_pixs.size() > 0xFF)
