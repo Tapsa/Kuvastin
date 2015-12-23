@@ -8,6 +8,7 @@
 #include <random>
 #include <set>
 #include <list>
+#include <vector>
 //#include <boost/lexical_cast.hpp>
 #include <wx/wx.h>
 #include <wx/fileconf.h>
