@@ -1,49 +1,47 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2015.12.17";
+const wxString Peili::APP_VER = "2016.2.15";
+const wxString Peili::HOT_KEYS = "Shortcuts\n"
+"LMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates\nA = Previous file\nD = Next file\nS = Pause show\nW = Continue show\n"
+"SPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nM = Reload folders periodically\nR = Reload folders";
 
-Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings)
-: wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT)
+Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings) :
+    wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
+    dirs_pixs(paths), time_pix(1000), time_dir(144000)
 {
     wxBusyCursor WaitCursor;
     SetIcon(wxIcon(AppIcon_xpm));
-    allow_del = equal_mix = false;
     if(1 < settings.size())
     {
         if("-eqmix" == settings) equal_mix = true;
         else if("-emad" == settings) equal_mix = allow_del = true;
         else if("-autodel" == settings) allow_del = true;
     }
-    dirs_pixs = paths;
-    pic_types = "*.jpg";
-    drawn_cnt = 0;
-    time_pix = 1000;
-    time_dir = 144000;
-    full_screen = clean_mirror = unique = dupl_found = inspect = browsing = false;
-    last_click = std::chrono::system_clock::now();
-    pix_loader = NULL;
 
     wxPanel *panel = new wxPanel(this);
+    sizer = new wxBoxSizer(wxVERTICAL);
     mirror = new wxPanel(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
-    wxSizer *sizer = new wxBoxSizer(wxVERTICAL);
+    bar = new wxStatusBar(panel);
     sizer->Add(mirror, 1, wxEXPAND);
+    sizer->Add(bar, 0, wxEXPAND);
     panel->SetSizer(sizer);
 
-#ifndef NDEBUG
-    int bars[5] = {295, 145, 145, 145, -1};
-    CreateStatusBar(5)->SetStatusWidths(5, bars);
-#endif
+    int bars[] = {295, 145, 145, 145, -1};
+    bar->SetFieldsCount(5, bars);
+    bar->Show(false);
 
     Connect(wxEVT_CLOSE_WINDOW, wxCloseEventHandler(Peili::OnExit));
-    mirror->Connect(mirror->GetId(), wxEVT_PAINT, wxPaintEventHandler(Peili::draw_pixs), NULL, this);
-    mirror->Connect(mirror->GetId(), wxEVT_ERASE_BACKGROUND, wxEraseEventHandler(Peili::clear_mirror), NULL, this);
-    mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), NULL, this);
-    mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_click), NULL, this);
-    //mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), NULL, this);
-    mirror->Connect(mirror->GetId(), wxEVT_CHAR, wxKeyEventHandler(Peili::keyboard), NULL, this);
-    timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), NULL, this);
-    timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), NULL, this);
+    mirror->Connect(mirror->GetId(), wxEVT_PAINT, wxPaintEventHandler(Peili::draw_pixs), 0, this);
+    mirror->Connect(mirror->GetId(), wxEVT_ERASE_BACKGROUND, wxEraseEventHandler(Peili::clear_mirror), 0, this);
+    mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), 0, this);
+    mirror->Connect(mirror->GetId(), wxEVT_LEFT_DCLICK, wxMouseEventHandler(Peili::left_click), 0, this);
+    mirror->Connect(mirror->GetId(), wxEVT_LEFT_DOWN, wxMouseEventHandler(Peili::left_down), 0, this);
+    mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_up), 0, this);
+    //mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), 0, this);
+    mirror->Connect(mirror->GetId(), wxEVT_CHAR, wxKeyEventHandler(Peili::keyboard), 0, this);
+    timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), 0, this);
+    timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), 0, this);
     Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
 
     wxToolTip::SetDelay(200);
@@ -69,12 +67,10 @@ void Peili::load_pixs()
             }
         }
     }
-#ifndef NDEBUG
-    SetStatusText("Pixs: " + format_int(pixs.GetCount()), 1);
-#endif
+    bar->SetStatusText("Images in show: " + format_int(pixs.GetCount()), 1);
     wxTimerEvent te;
     load_pix(te);
-    timer_dir.Start(time_dir);
+    if(auto_dir_reload) timer_dir.Start(time_dir);
 }
 
 void Peili::load_dir(wxTimerEvent &event)
@@ -112,30 +108,33 @@ void Peili::draw_pixs(wxPaintEvent &event)
         dc.Clear();
         clean_mirror = false;
     }
-#ifndef NDEBUG
-    SetStatusText("Images drawn: " + format_int(++drawn_cnt), 0);
-#endif
+    bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
     if(pic.IsOk())
     {
         dc.DrawBitmap(pic, picX, picY, true);
     }
+    if(cnt_clicks)
+    {
+        dc.DrawRectangle(0, 0, 120, 20);
+        wxString lmb = "DOWN " + format_int(lmb_down) + ", UP " + format_int(lmb_up);
+        dc.DrawText(lmb, 2, 2);
+    }
+}
+
+void Peili::left_down(wxMouseEvent &event)
+{
+    ++lmb_down;
+}
+
+void Peili::left_up(wxMouseEvent &event)
+{
+    ++lmb_up;
 }
 
 void Peili::left_click(wxMouseEvent &event)
 {
-    std::chrono::time_point<std::chrono::system_clock> click = std::chrono::system_clock::now();
-    auto time_passed = std::chrono::duration_cast<std::chrono::milliseconds>(click - last_click).count();
-    if(900 > time_passed)
-    {
-        full_screen = !full_screen;
-        ShowFullScreen(full_screen);
-    }
-    else if(3000 > time_passed && time_passed < 1500)
-    {
-        load_pixs();
-        clean_mirror = true;
-    }
-    last_click = click;
+    full_screen = !full_screen;
+    ShowFullScreen(full_screen);
 }
 
 void Peili::middle_click(wxMouseEvent &event)
@@ -146,6 +145,7 @@ void Peili::middle_click(wxMouseEvent &event)
 
 /*void Peili::right_click(wxMouseEvent &event)
 {
+    timer_dir.Stop();
     timer_pix.Stop();
     unique_pixs.clear();
     pix = 0;
@@ -173,8 +173,8 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             load_image();
             browsing = true;
+            break;
         }
-        break;
         case 'd':
         {
             if(browsing)
@@ -185,19 +185,19 @@ void Peili::keyboard(wxKeyEvent &event)
                 }
             }
             load_image();
+            break;
         }
-        break;
         case 'w':
         {
             inspect = browsing = false;
             load_pixs();
+            break;
         }
-        break;
         case 's':
         {
             inspect = true;
+            break;
         }
-        break;
         case ' ':
         {
             if(!inspect)
@@ -211,8 +211,33 @@ void Peili::keyboard(wxKeyEvent &event)
                 browsing = true;
             }
             wxExecute("Explorer /select," + filename);
+            break;
         }
-        break;
+        case 'b':
+        {
+            show_status_bar = !show_status_bar;
+            bar->Show(show_status_bar);
+            sizer->Layout();
+            break;
+        }
+        case 'c':
+        {
+            cnt_clicks = !cnt_clicks;
+            break;
+        }
+        case 'm':
+        {
+            auto_dir_reload = !auto_dir_reload;
+            if(auto_dir_reload) timer_dir.Start(time_pix);
+            clean_mirror = true;
+            break;
+        }
+        case 'r':
+        {
+            load_pixs();
+            clean_mirror = true;
+            break;
+        }
     }
 }
 
@@ -222,7 +247,7 @@ void Peili::load_image()
     if(pix_loader->Run() != wxTHREAD_NO_ERROR)
     {
         delete pix_loader;
-        pix_loader = NULL;
+        pix_loader = 0;
     }
 }
 
@@ -373,20 +398,23 @@ DONE_RIGHT:
 Lataaja::~Lataaja()
 {
     wxCriticalSectionLocker enter(kehys->pix_loader_cs);
-    kehys->pix_loader = NULL;
+    kehys->pix_loader = 0;
 }
 
 void Peili::thread_done(wxThreadEvent &event)
 {
-    if(inspect)
+    if(exit)
+    {
+        wxCloseEvent quit(wxEVT_CLOSE_WINDOW);
+        ProcessEvent(quit);
+    }
+    else if(inspect)
     {
         mirror->Refresh();
     }
     else if(unique)
     {
-#ifndef NDEBUG
-        SetStatusText("Duplicate check done for " + format_int(pix), 0);
-#endif
+        bar->SetStatusText("Duplicate check done for " + format_int(pix), 0);
         if(dupl_found)
         {
             mirror->Refresh();
@@ -433,6 +461,16 @@ wxString format_int(int value)
 
 void Peili::OnExit(wxCloseEvent &event)
 {
+    timer_dir.Stop();
     timer_pix.Stop();
+    if(pix_loader && pix_loader->Run())
+    {
+        if(event.CanVeto())
+        {
+            exit = true;
+            event.Veto();
+            return;
+        }
+    }
     Destroy();
 }
