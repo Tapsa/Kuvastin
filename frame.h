@@ -12,7 +12,7 @@ class Lataaja: public wxThread
 {
 public:
     Lataaja(Peili *kehys):
-    wxThread()
+    wxThread(wxTHREAD_JOINABLE)
     {
         this->kehys = kehys;
     }
@@ -20,6 +20,8 @@ public:
 
 protected:
     virtual ExitCode Entry();
+    inline bool domore(int&, int&, unsigned, unsigned, unsigned, unsigned, int);
+    static unsigned last_mX, last_mY, last_cX, last_cY;
     Peili *kehys;
 };
 
@@ -45,6 +47,14 @@ public:
 
     static const wxString APP_VER, HOT_KEYS;
 
+    enum Scene
+    {
+        LEFT_TO_RIGHT,
+        RIGHT_TO_LEFT,
+        AVOID_LAST,
+        ALL_OVER
+    };
+
     wxString pic_types = "*.jpg", filename;
     wxArrayString pixs, dirs_pixs;
     wxBitmap pic;
@@ -52,9 +62,9 @@ public:
     size_t drawn_cnt = 0, time_pix, time_dir;
     std::minstd_rand0 rng;
     bool full_screen = false, clean_mirror = false, unique = false, dupl_found = false, allow_del = false, inspect = false,
-        browsing = false, equal_mix = false, cnt_clicks = false, auto_dir_reload = false, exit = false, show_status_bar = false;
+        browsing = false, equal_mix = false, cnt_clicks = false, auto_dir_reload = false, close = false, show_status_bar = false;
     std::chrono::time_point<std::chrono::system_clock> load_begin;
-    int pix, picX, picY, lmb_down = 0, lmb_up = 0;
+    unsigned pix, picX, picY, lmb_down = 0, lmb_up = 0, shotgun = AVOID_LAST;
     std::list<wxString> shown_pixs;
     std::list<wxString>::iterator inspect_file;
     std::vector<size_t> path_ranges;

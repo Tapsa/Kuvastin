@@ -4,7 +4,12 @@
 const wxString Peili::APP_VER = "2016.2.15";
 const wxString Peili::HOT_KEYS = "Shortcuts\n"
 "LMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates\nA = Previous file\nD = Next file\nS = Pause show\nW = Continue show\n"
-"SPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nM = Reload folders periodically\nR = Reload folders";
+"SPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay\n"
+"M = Reload folders periodically\nR = Reload folders";
+unsigned Lataaja::last_mX = 0;
+unsigned Lataaja::last_mY = 0;
+unsigned Lataaja::last_cX = 0;
+unsigned Lataaja::last_cY = 0;
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
@@ -115,6 +120,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
     }
     if(cnt_clicks)
     {
+        dc.SetBrush(wxBrush(wxColour(240, 240, 240)));
         dc.DrawRectangle(0, 0, 120, 20);
         wxString lmb = "DOWN " + format_int(lmb_down) + ", UP " + format_int(lmb_up);
         dc.DrawText(lmb, 2, 2);
@@ -225,6 +231,11 @@ void Peili::keyboard(wxKeyEvent &event)
             cnt_clicks = !cnt_clicks;
             break;
         }
+        case 'l':
+        {
+            shotgun = shotgun == Scene::ALL_OVER ? Scene::AVOID_LAST : Scene::ALL_OVER;
+            break;
+        }
         case 'm':
         {
             auto_dir_reload = !auto_dir_reload;
@@ -251,6 +262,37 @@ void Peili::load_image()
     }
 }
 
+bool Lataaja::domore(int &first, int &second, unsigned last_middle, unsigned last_edge, unsigned mirror_side, unsigned img_side, int leftover)
+{
+    if(last_middle < last_edge)
+    {
+        if(mirror_side - last_edge > img_side)
+        {
+            first = last_edge + kehys->rng() % (mirror_side - last_edge - img_side);
+            second = leftover > 0 ? kehys->rng() % leftover : 0;
+            return false;
+        }
+        else
+        {
+            first = mirror_side - img_side;
+        }
+    }
+    else
+    {
+        if(last_edge > img_side)
+        {
+            first = kehys->rng() % (last_edge - img_side);
+            second = leftover > 0 ? kehys->rng() % leftover : 0;
+            return false;
+        }
+        else
+        {
+            first = 0;
+        }
+    }
+    return true;
+}
+
 wxThread::ExitCode Lataaja::Entry()
 {
     wxImage pic;
@@ -263,10 +305,8 @@ wxThread::ExitCode Lataaja::Entry()
     }
     if(pic.IsOk())
     {
-        int mirrorX, mirrorY;
-        kehys->mirror->GetClientSize(&mirrorX, &mirrorY);
-        float centerX = mirrorX * 0.5f;
-        float centerY = mirrorY * 0.5f;
+        int mirror_width, mirror_height;
+        kehys->mirror->GetClientSize(&mirror_width, &mirror_height);
         // Crop edges.
         {
             unsigned char val = pic.GetRed(0, 0), max_diff = 12;
@@ -325,10 +365,10 @@ DONE_RIGHT:
                 pic = pic.GetSubImage(crop);
             }
         }
-        float picX = pic.GetWidth() * 0.5f;
-        float picY = pic.GetHeight() * 0.5f;
+        int img_width = pic.GetWidth();
+        int img_height = pic.GetHeight();
         // Check if duplicate. Still broken.
-        if(kehys->unique)
+        /*if(kehys->unique)
         {
             int gap = pic.GetWidth() * 0.0625f;
             std::string check = "";
@@ -348,46 +388,57 @@ DONE_RIGHT:
             {
                 kehys->unique_pixs.insert(check);
             }
-        }
-        if(kehys->allow_del && ((picX < 480 && picY < 480) || picX < 320 || picY < 320))
+        }*/
+        if(kehys->allow_del && ((img_width < 960 && img_height < 960) || img_width < 640 || img_height < 640))
         {
             wxCriticalSectionLocker enter(kehys->dir_loader_cs);
             wxRemoveFile(kehys->filename);
         }
-        if(!kehys->unique || kehys->dupl_found)
+        //if(!kehys->unique || kehys->dupl_found)
         {
-            int overX = centerX - picX, overY = centerY - picY;
-            if(overX < 0 || overY < 0)
+            int xpos = 0, ypos = 0, leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
+            if(leftover_width < 0 || leftover_height < 0)
             {
-                if(overX < overY)
+                if(leftover_width < leftover_height)
                 {
-                    float prop = centerX / picX;
-                    picX *= prop;
-                    picY *= prop;
-                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                    float prop = float(mirror_width) / float(img_width);
+                    img_width *= prop;
+                    img_height *= prop;
+                    pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
                 }
                 else
                 {
-                    float prop = centerY / picY;
-                    picX *= prop;
-                    picY *= prop;
-                    pic.Rescale(2 * picX, 2 * picY, wxIMAGE_QUALITY_BICUBIC);
+                    float prop = float(mirror_height) / float(img_height);
+                    img_width *= prop;
+                    img_height *= prop;
+                    pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
                 }
-                overX = centerX - picX;
-                overY = centerY - picY;
+                leftover_width = mirror_width - img_width;
+                leftover_height = mirror_height - img_height;
             }
-            if(overX > 0)
+            switch(kehys->shotgun)
             {
-                int rangeX = kehys->rng() % (overX * 2);
-                centerX = centerX - overX + rangeX;
+                case Peili::Scene::ALL_OVER:
+                {
+                    xpos = leftover_width > 0 ? kehys->rng() % leftover_width : 0;
+                    ypos = leftover_height > 0 ? kehys->rng() % leftover_height : 0;
+                    break;
+                }
+                case Peili::Scene::AVOID_LAST:
+                {
+                    if(domore(xpos, ypos, last_mX, last_cX, mirror_width, img_width, leftover_height))
+                    {
+                        domore(ypos, xpos, last_mY, last_cY, mirror_height, img_height, leftover_width);
+                    }
+                    break;
+                }
             }
-            if(overY > 0)
-            {
-                int rangeY = kehys->rng() % (overY * 2);
-                centerY = centerY - overY + rangeY;
-            }
-            kehys->picX = centerX - picX;
-            kehys->picY = centerY - picY;
+            last_mX = xpos + (img_width >> 1);
+            last_mY = ypos + (img_height >> 1);
+            last_cX = last_mX < mirror_width >> 1 ? xpos + img_width : xpos;
+            last_cY = last_mY < mirror_height >> 1 ? ypos + img_height : ypos;
+            kehys->picX = xpos;
+            kehys->picY = ypos;
             kehys->pic = wxBitmap(pic);
         }
     }
@@ -403,7 +454,7 @@ Lataaja::~Lataaja()
 
 void Peili::thread_done(wxThreadEvent &event)
 {
-    if(exit)
+    if(close)
     {
         wxCloseEvent quit(wxEVT_CLOSE_WINDOW);
         ProcessEvent(quit);
@@ -412,7 +463,7 @@ void Peili::thread_done(wxThreadEvent &event)
     {
         mirror->Refresh();
     }
-    else if(unique)
+    /*else if(unique)
     {
         bar->SetStatusText("Duplicate check done for " + format_int(pix), 0);
         if(dupl_found)
@@ -430,7 +481,7 @@ void Peili::thread_done(wxThreadEvent &event)
             unique = false;
             load_pixs();
         }
-    }
+    }*/
     else
     {
         size_t load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
@@ -463,11 +514,11 @@ void Peili::OnExit(wxCloseEvent &event)
 {
     timer_dir.Stop();
     timer_pix.Stop();
-    if(pix_loader && pix_loader->Run())
+    if(pix_loader && pix_loader->IsAlive())
     {
         if(event.CanVeto())
         {
-            exit = true;
+            close = true;
             event.Veto();
             return;
         }
