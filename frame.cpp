@@ -392,20 +392,10 @@ DONE_RIGHT:
             int xpos = 0, ypos = 0, leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
             if(leftover_width < 0 || leftover_height < 0)
             {
-                if(leftover_width < leftover_height)
-                {
-                    float prop = float(mirror_width) / float(img_width);
-                    img_width *= prop;
-                    img_height *= prop;
-                    pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
-                }
-                else
-                {
-                    float prop = float(mirror_height) / float(img_height);
-                    img_width *= prop;
-                    img_height *= prop;
-                    pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
-                }
+                float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
+                img_width *= prop;
+                img_height *= prop;
+                pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
                 leftover_width = mirror_width - img_width;
                 leftover_height = mirror_height - img_height;
             }
@@ -421,20 +411,21 @@ DONE_RIGHT:
                 {
                     int box[4][4] =
                     {
-                        {0, 0, std::max(0, last_x1 - img_width), leftover_height},
-                        {last_x2, 0, std::max(0, mirror_width - last_x2 - img_width), leftover_height},
-                        {box[0][2], 0, std::max(0, std::min(leftover_width, last_x2) - box[0][2]), std::max(0, last_y1 - img_height)},
-                        {box[0][2], last_y2, box[2][2], std::max(0, mirror_height - last_y2 - img_height)}
+                        {0, 0, std::max(0, last_x1 - img_width + 1), leftover_height + 1},
+                        {last_x2, 0, std::max(0, mirror_width - last_x2 - img_width + 1), leftover_height + 1},
+                        {box[0][2], 0, std::max(0, std::min(leftover_width + 1, last_x2) - box[0][2]), std::max(0, last_y1 - img_height + 1)},
+                        {box[0][2], last_y2, box[2][2], std::max(0, mirror_height - last_y2 - img_height + 1)}
                     };
                     //std::memcpy(last_box, box, 16 * sizeof(int));
-                    //wxMessageBox(format_int(box[0][2])+"\n"+format_int(box[2][0]));
                     int props[4] = {box[0][2] * box[0][3], box[1][2] * box[1][3], box[2][2] * box[2][3], box[3][2] * box[3][3]};
                     int total = props[0] + props[1] + props[2] + props[3];
-                    /*wxMessageBox("Boxes\nX left "+format_int(box[0][0])+", "+format_int(box[0][1])+" -> "+format_int(box[0][2])+", "+format_int(box[0][3])+
-                    "\nX right "+format_int(box[1][0])+", "+format_int(box[1][1])+" -> "+format_int(box[1][2])+", "+format_int(box[1][3])+
-                    "\nY up "+format_int(box[2][0])+", "+format_int(box[2][1])+" -> "+format_int(box[2][2])+", "+format_int(box[2][3])+
-                    "\nY down "+format_int(box[3][0])+", "+format_int(box[3][1])+" -> "+format_int(box[3][2])+", "+format_int(box[3][3])+
-                    "\n% left "+format_int(props[0])+"\n% right "+format_int(props[1])+"\n% up "+format_int(props[2])+"\n% down "+format_int(props[3]));*/
+                    /*wxMessageBox("Boxes\nX left "+format_int(box[0][0])+", "+format_int(box[0][1])+" -> "+format_int(box[0][2] + box[0][0])+
+                    ", "+format_int(box[0][3] + box[0][1])+"\nX right "+format_int(box[1][0])+", "+format_int(box[1][1])+
+                    " -> "+format_int(box[1][2] + box[1][0])+", "+format_int(box[1][3] + box[1][1])+"\nY up "+format_int(box[2][0])+
+                    ", "+format_int(box[2][1])+" -> "+format_int(box[2][2] + box[2][0])+", "+format_int(box[2][3] + box[2][1])+
+                    "\nY down "+format_int(box[3][0])+", "+format_int(box[3][1])+" -> "+format_int(box[3][2] + box[3][0])+
+                    ", "+format_int(box[3][3] + box[3][1])+"\n% left "+format_int(props[0])+"\n% right "+format_int(props[1])+
+                    "\n% up "+format_int(props[2])+"\n% down "+format_int(props[3]));*/
                     if(!total)
                     {
                         if(std::max(last_x1, mirror_width - last_x2) < std::max(last_y1, mirror_height - last_y2))
@@ -452,7 +443,7 @@ DONE_RIGHT:
                         break;
                     }
                     int area = rng() % total;
-                    for(size_t i = 0; i < 4; ++i, area -= props[i])
+                    for(size_t i = 0; i < 4; area -= props[i], ++i)
                     {
                         if(area < props[i])
                         {
