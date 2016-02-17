@@ -6,11 +6,10 @@ const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
 "\nM = Reload folders periodically\nR = Reload folders";
-wxString filename;
-wxBitmap bitmap;//, last_bitmap;
+std::list<Nouto> fetches;
+std::list<Nouto>::iterator fetch;
 std::mt19937 rng;
-int last_x1, last_y1, last_x2, last_y2;//, old_x1, old_y1;
-//int last_box[4][4];
+int last_x1, last_y1, last_x2, last_y2;
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
@@ -24,6 +23,7 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
         else if("-emad" == settings) equal_mix = allow_del = true;
         else if("-autodel" == settings) allow_del = true;
     }
+    fetch = fetches.begin();
 
     wxPanel *panel = new wxPanel(this);
     sizer = new wxBoxSizer(wxVERTICAL);
@@ -59,7 +59,7 @@ void Peili::load_pixs()
 {
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
     {
-        wxCriticalSectionLocker enter(dir_loader_cs);
+        wxCriticalSectionLocker lock(folder_cs);
         size_t dirs_size = dirs_pixs.size();
         pixs.Clear();
         path_ranges = std::vector<size_t>(2 * dirs_size, 0);
@@ -90,19 +90,7 @@ void Peili::load_pix(wxTimerEvent &event)
     timer_pix.Stop();
     if(pixs.IsEmpty()) return;
     load_begin = std::chrono::system_clock::now();
-    mirror->Refresh();
-    if(!unique)
-    {
-        size_t rng_beg = 0, rng_cnt = pixs.GetCount();
-        if(equal_mix)
-        {
-            size_t ranges_cnt = path_ranges.size() / 2, slot = rng() % ranges_cnt;
-            rng_cnt = path_ranges[ranges_cnt + slot];
-            rng_beg = path_ranges[slot];
-        }
-        filename = pixs[rng_beg + rng() % rng_cnt];
-        load_image();
-    }
+    load_image();
 }
 
 void Peili::draw_pixs(wxPaintEvent &event)
@@ -115,24 +103,10 @@ void Peili::draw_pixs(wxPaintEvent &event)
         clean_mirror = false;
     }
     bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
-    /*{
-        wxCriticalSectionLocker lock(bitmap_cs);
-        if(last_bitmap.IsOk())
-        dc.DrawBitmap(last_bitmap, old_x1, old_y1, true);
-    }
-    dc.SetPen(*wxRED_PEN);
-    dc.SetBrush(*wxRED_BRUSH);
-    dc.DrawRectangle(last_box[0][0], last_box[0][1], last_box[0][2], last_box[0][3]);
-    dc.DrawRectangle(last_box[1][0], last_box[1][1], last_box[1][2], last_box[1][3]);
-    dc.DrawRectangle(last_box[2][0], last_box[2][1], last_box[2][2], last_box[2][3]);
-    dc.DrawRectangle(last_box[3][0], last_box[3][1], last_box[3][2], last_box[3][3]);*/
+    if(fetch != fetches.end() && fetch->file.IsOk())
     {
-        wxCriticalSectionLocker lock(bitmap_cs);
-        if(bitmap.IsOk())
-        {
-            //last_bitmap = bitmap; old_x1 = last_x1; old_y1 = last_y1;
-            dc.DrawBitmap(bitmap, last_x1, last_y1, true);
-        }
+        dc.DrawBitmap(wxBitmap(fetch->file), last_x1, last_y1, true);
+        if(flow) advance();
     }
     if(cnt_clicks)
     {
@@ -140,6 +114,16 @@ void Peili::draw_pixs(wxPaintEvent &event)
         dc.DrawRectangle(0, 0, 120, 20);
         wxString lmb = "DOWN " + format_int(lmb_down) + ", UP " + format_int(lmb_up);
         dc.DrawText(lmb, 2, 2);
+    }
+}
+
+void Peili::advance()
+{
+    wxCriticalSectionLocker lock(fetch_cs);
+    fetch = fetch == fetches.end() ? ++fetch++ : ++fetch;
+    if(fetches.size() > 1)
+    {
+        fetches.pop_front();
     }
 }
 
@@ -184,62 +168,41 @@ void Peili::keyboard(wxKeyEvent &event)
     {
         case 'a':
         {
-            if(!browsing)
-            {
-                inspect = true;
-                inspect_file = shown_pixs.begin();
-            }
-            if(++inspect_file != shown_pixs.end())
-            {
-                filename = *inspect_file;
-            }
+            flow = false;
+            --fetch;
             load_image();
-            browsing = true;
             break;
         }
         case 'd':
         {
-            if(browsing)
-            {
-                if(--inspect_file != shown_pixs.end())
-                {
-                    filename = *inspect_file;
-                }
-            }
+            ++fetch;
             load_image();
             break;
         }
         case 'w':
         {
-            inspect = browsing = false;
+            flow = true;
             load_pixs();
             break;
         }
         case 's':
         {
-            inspect = true;
+            flow = false;
             break;
         }
         case 'e':
         {
-            inspect = true;
-            wxTimerEvent te;
-            load_pix(te);
+            if(!flow) advance();
+            load_image();
             break;
         }
         case ' ':
         {
-            if(!inspect)
+            flow = false;
+            if(fetch != fetches.end())
             {
-                inspect = true;
-                inspect_file = shown_pixs.begin();
-                if(++inspect_file != shown_pixs.end())
-                {
-                    filename = *inspect_file;
-                }
-                browsing = true;
+                wxExecute("Explorer /select," + fetch->filename);
             }
-            wxExecute("Explorer /select," + filename);
             break;
         }
         case 'b':
@@ -285,19 +248,25 @@ void Peili::load_image()
     }
 }
 
-wxThread::ExitCode Lataaja::Entry()
+wxThread::ExitCode Noutaja::Entry()
 {
-    wxImage pic;
-    wxString picname(filename);
+    for(size_t i = 0; kehys->working && i < 0x1F; ++i)
     {
-        wxCriticalSectionLocker enter(kehys->dir_loader_cs);
+        kehys->folder_cs.Enter();
+        size_t rng_beg = 0, rng_cnt = kehys->pixs.GetCount();
+        if(kehys->equal_mix)
         {
-            wxLogNull log; // Kill error popups.
-            pic = wxImage(picname, wxBITMAP_TYPE_JPEG);
+            size_t ranges_cnt = kehys->path_ranges.size() / 2, slot = rng() % ranges_cnt;
+            rng_cnt = kehys->path_ranges[ranges_cnt + slot];
+            rng_beg = kehys->path_ranges[slot];
         }
-    }
-    if(pic.IsOk())
-    {
+        wxString picname(kehys->pixs[rng_beg + rng() % rng_cnt]);
+
+        wxLogNull log;
+        wxImage pic(picname, wxBITMAP_TYPE_JPEG);
+        kehys->folder_cs.Leave();
+        if(!pic.IsOk()) continue;
+
         int mirror_width, mirror_height;
         kehys->mirror->GetClientSize(&mirror_width, &mirror_height);
         // Crop edges.
@@ -360,138 +329,138 @@ DONE_RIGHT:
         }
         int img_width = pic.GetWidth();
         int img_height = pic.GetHeight();
-        // Check if duplicate. Still broken.
-        /*if(kehys->unique)
-        {
-            int gap = pic.GetWidth() * 0.0625f;
-            std::string check = "";
-            for(int w=0; w < pic.GetWidth(); w += gap)
-            for(int h=0; h < pic.GetHeight(); h += gap)
-            check += (unsigned char)(32 + int(float(pic.GetRed(w, h)) * 0.37f));
-            if(kehys->unique_pixs.count(check))
-            {
-                kehys->dupl_found = true;
-                wxString old_name = picname;
-                int split = 1 + old_name.Find('\\', true);
-                wxString new_name = old_name.Mid(0, split) + "bin\\" + old_name.Mid(split);
-                wxCriticalSectionLocker enter(kehys->dir_loader_cs);
-                wxRenameFile(old_name, new_name);
-            }
-            else
-            {
-                kehys->unique_pixs.insert(check);
-            }
-        }*/
         if(kehys->allow_del && ((img_width < 960 && img_height < 960) || img_width < 640 || img_height < 640))
         {
-            wxCriticalSectionLocker enter(kehys->dir_loader_cs);
+            wxCriticalSectionLocker lock(kehys->folder_cs);
             wxRemoveFile(picname);
         }
-        //if(!kehys->unique || kehys->dupl_found)
+        int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
+        if(leftover_width < 0 || leftover_height < 0)
         {
-            int xpos = 0, ypos = 0, leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
-            if(leftover_width < 0 || leftover_height < 0)
-            {
-                float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
-                img_width *= prop;
-                img_height *= prop;
-                pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
-                leftover_width = mirror_width - img_width;
-                leftover_height = mirror_height - img_height;
-            }
-            switch(kehys->shotgun)
-            {
-                case Peili::Scene::ALL_OVER:
-                {
-                    xpos = leftover_width > 0 ? rng() % leftover_width : 0;
-                    ypos = leftover_height > 0 ? rng() % leftover_height : 0;
-                    break;
-                }
-                case Peili::Scene::AVOID_LAST:
-                {
-                    int box[4][4] =
-                    {
-                        {0, 0, std::max(0, last_x1 - img_width + 1), leftover_height + 1},
-                        {last_x2, 0, std::max(0, mirror_width - last_x2 - img_width + 1), leftover_height + 1},
-                        {box[0][2], 0, std::max(0, std::min(leftover_width + 1, last_x2) - box[0][2]), std::max(0, last_y1 - img_height + 1)},
-                        {box[0][2], last_y2, box[2][2], std::max(0, mirror_height - last_y2 - img_height + 1)}
-                    };
-                    //std::memcpy(last_box, box, 16 * sizeof(int));
-                    int props[4] = {box[0][2] * box[0][3], box[1][2] * box[1][3], box[2][2] * box[2][3], box[3][2] * box[3][3]};
-                    int total = props[0] + props[1] + props[2] + props[3];
-                    /*wxMessageBox("Boxes\nX left "+format_int(box[0][0])+", "+format_int(box[0][1])+" -> "+format_int(box[0][2] + box[0][0])+
-                    ", "+format_int(box[0][3] + box[0][1])+"\nX right "+format_int(box[1][0])+", "+format_int(box[1][1])+
-                    " -> "+format_int(box[1][2] + box[1][0])+", "+format_int(box[1][3] + box[1][1])+"\nY up "+format_int(box[2][0])+
-                    ", "+format_int(box[2][1])+" -> "+format_int(box[2][2] + box[2][0])+", "+format_int(box[2][3] + box[2][1])+
-                    "\nY down "+format_int(box[3][0])+", "+format_int(box[3][1])+" -> "+format_int(box[3][2] + box[3][0])+
-                    ", "+format_int(box[3][3] + box[3][1])+"\n% left "+format_int(props[0])+"\n% right "+format_int(props[1])+
-                    "\n% up "+format_int(props[2])+"\n% down "+format_int(props[3]));*/
-                    if(!total)
-                    {
-                        if(std::max(last_x1, mirror_width - last_x2) < std::max(last_y1, mirror_height - last_y2))
-                        {
-                            //wxMessageBox("No space, corner Y");
-                            ypos = last_y1 > mirror_height - last_y2 ? 0 : leftover_height;
-                            xpos = rng() % std::max(1, leftover_width);
-                        }
-                        else
-                        {
-                            //wxMessageBox("No space, corner X");
-                            xpos = last_x1 > mirror_width - last_x2 ? 0 : leftover_width;
-                            ypos = rng() % std::max(1, leftover_height);
-                        }
-                        break;
-                    }
-                    int area = rng() % total;
-                    for(size_t i = 0; i < 4; area -= props[i], ++i)
-                    {
-                        if(area < props[i])
-                        {
-                            xpos = box[i][0] + rng() % box[i][2];
-                            ypos = box[i][1] + rng() % box[i][3];
-                            break;
-                        }
-                    }
-                    break;
-                }
-            }
-            last_x2 = xpos + img_width;
-            last_y2 = ypos + img_height;
-            {
-                wxCriticalSectionLocker lock(kehys->bitmap_cs);
-                last_x1 = xpos;
-                last_y1 = ypos;
-                bitmap = wxBitmap(pic);
-            }
+            float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
+            img_width *= prop;
+            img_height *= prop;
+            pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
+            leftover_width = mirror_width - img_width;
+            leftover_height = mirror_height - img_height;
+        }
+        fetches.emplace_back(pic, picname, mirror_width, mirror_height, img_width, img_height, leftover_width, leftover_height);
+    }
+    return wxThread::ExitCode(0xFE);
+}
+
+wxThread::ExitCode Lataaja::Entry()
+{
+    if(!kehys->fetcher && fetches.size() < 0x1F)
+    {
+        kehys->fetcher = new Noutaja(kehys);
+        if(kehys->fetcher->Run() != wxTHREAD_NO_ERROR)
+        {
+            delete kehys->fetcher;
+            kehys->fetcher = 0;
+            return wxThread::ExitCode(1);
         }
     }
-    wxQueueEvent(kehys, new wxThreadEvent());
-    return (wxThread::ExitCode)0;
+    if(fetches.empty())
+    {
+        do
+        {
+            Sleep(200);
+        }
+        while(fetches.empty());
+        fetch = fetches.begin();
+    }
+    if(fetch == fetches.end())
+    {
+        wxQueueEvent(kehys, new wxThreadEvent());
+        return wxThread::ExitCode(0x4E20 + fetches.size());
+    }
+    const int &mirror_width = fetch->mirror_width, &mirror_height = fetch->mirror_height;
+    const int &img_width = fetch->img_width, &img_height = fetch->img_height;
+    const int &leftover_width = fetch->leftover_width, &leftover_height = fetch->leftover_height;
+    int xpos = 0, ypos = 0;
+    switch(kehys->shotgun)
+    {
+        case Peili::Scene::ALL_OVER:
+        {
+            xpos = leftover_width > 0 ? rng() % leftover_width : 0;
+            ypos = leftover_height > 0 ? rng() % leftover_height : 0;
+            break;
+        }
+        case Peili::Scene::AVOID_LAST:
+        {
+            const int box[4][4] =
+            {
+                {0, 0, std::max(0, last_x1 - img_width + 1), leftover_height + 1},
+                {last_x2, 0, std::max(0, mirror_width - last_x2 - img_width + 1), leftover_height + 1},
+                {box[0][2], 0, std::max(0, std::min(leftover_width + 1, last_x2) - box[0][2]), std::max(0, last_y1 - img_height + 1)},
+                {box[0][2], last_y2, box[2][2], std::max(0, mirror_height - last_y2 - img_height + 1)}
+            };
+            //std::memcpy(last_box, box, 16 * sizeof(int));
+            const int props[4] = {box[0][2] * box[0][3], box[1][2] * box[1][3], box[2][2] * box[2][3], box[3][2] * box[3][3]};
+            const int total = props[0] + props[1] + props[2] + props[3];
+            /*wxMessageBox("Boxes\nX left "+format_int(box[0][0])+", "+format_int(box[0][1])+" -> "+format_int(box[0][2] + box[0][0])+
+            ", "+format_int(box[0][3] + box[0][1])+"\nX right "+format_int(box[1][0])+", "+format_int(box[1][1])+
+            " -> "+format_int(box[1][2] + box[1][0])+", "+format_int(box[1][3] + box[1][1])+"\nY up "+format_int(box[2][0])+
+            ", "+format_int(box[2][1])+" -> "+format_int(box[2][2] + box[2][0])+", "+format_int(box[2][3] + box[2][1])+
+            "\nY down "+format_int(box[3][0])+", "+format_int(box[3][1])+" -> "+format_int(box[3][2] + box[3][0])+
+            ", "+format_int(box[3][3] + box[3][1])+"\n% left "+format_int(props[0])+"\n% right "+format_int(props[1])+
+            "\n% up "+format_int(props[2])+"\n% down "+format_int(props[3]));*/
+            if(!total)
+            {
+                if(std::max(last_x1, mirror_width - last_x2) < std::max(last_y1, mirror_height - last_y2))
+                {
+                    //wxMessageBox("No space, corner Y");
+                    ypos = last_y1 > mirror_height - last_y2 ? 0 : leftover_height;
+                    xpos = rng() % std::max(1, leftover_width);
+                }
+                else
+                {
+                    //wxMessageBox("No space, corner X");
+                    xpos = last_x1 > mirror_width - last_x2 ? 0 : leftover_width;
+                    ypos = rng() % std::max(1, leftover_height);
+                }
+                break;
+            }
+            int area = rng() % total;
+            for(size_t i = 0; i < 4; area -= props[i], ++i)
+            {
+                if(area < props[i])
+                {
+                    xpos = box[i][0] + rng() % box[i][2];
+                    ypos = box[i][1] + rng() % box[i][3];
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    last_x1 = xpos;
+    last_y1 = ypos;
+    last_x2 = xpos + img_width;
+    last_y2 = ypos + img_height;
+    if(kehys->working) wxQueueEvent(kehys, new wxThreadEvent());
+    return wxThread::ExitCode(0x2710 + fetches.size());
+}
+
+Noutaja::~Noutaja()
+{
+    kehys->fetcher = 0;
 }
 
 Lataaja::~Lataaja()
 {
-    wxCriticalSectionLocker enter(kehys->pix_loader_cs);
     kehys->pix_loader = 0;
 }
 
 void Peili::thread_done(wxThreadEvent &event)
 {
-    if(close)
-    {
-        wxCloseEvent quit(wxEVT_CLOSE_WINDOW);
-        ProcessEvent(quit);
-    }
-    else if(inspect)
-    {
-        mirror->Refresh();
-    }
+    mirror->Refresh();
     /*else if(unique)
     {
         bar->SetStatusText("Duplicate check done for " + format_int(pix), 0);
         if(dupl_found)
         {
-            mirror->Refresh();
             dupl_found = false;
         }
         if(++pix < pixs.GetCount())
@@ -505,15 +474,10 @@ void Peili::thread_done(wxThreadEvent &event)
             load_pixs();
         }
     }*/
-    else
+    if(flow)
     {
         size_t load_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - load_begin).count();
-        shown_pixs.emplace_front(filename);
         timer_pix.Start(load_time < time_pix ? time_pix - load_time : 0);
-        if(shown_pixs.size() > 0xFF)
-        {
-            shown_pixs.pop_back();
-        }
     }
 }
 
@@ -537,13 +501,16 @@ void Peili::OnExit(wxCloseEvent &event)
 {
     timer_dir.Stop();
     timer_pix.Stop();
-    if(pix_loader && pix_loader->IsAlive())
+    if(pix_loader || fetcher)
     {
         if(event.CanVeto())
         {
-            close = true;
-            event.Veto();
-            return;
+            working = false;
+            do
+            {
+                Sleep(200);
+            }
+            while(pix_loader || fetcher);
         }
     }
     Destroy();
