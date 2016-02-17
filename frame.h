@@ -13,7 +13,7 @@ class Nouto
 public:
     Nouto(const wxImage &f, const wxString &n, int v1, int v2, int v3, int v4, int v5, int v6):
     file(f), filename(n), mirror_width(v1), mirror_height(v2), img_width(v3), img_height(v4), leftover_width(v5), leftover_height(v6){}
-    const wxImage file;
+    const wxBitmap file;
     const wxString filename;
     const int mirror_width, mirror_height, img_width, img_height, leftover_width, leftover_height;
 };

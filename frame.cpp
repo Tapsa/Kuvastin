@@ -57,9 +57,25 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
 
 void Peili::load_pixs()
 {
+    if(pix_loader || fetcher)
+    {
+        // Stop data handling threads. TODO: Do it outside of GUI thread?
+        working = false;
+        do
+        {
+            Sleep(200);
+        }
+        while(pix_loader || fetcher);
+        wxCriticalSectionLocker lock(fetch_cs);
+        // Reset prefetched file buffer.
+        fetches.clear();
+        fetch = fetches.begin();
+        working = true;
+    }
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
     {
         wxCriticalSectionLocker lock(folder_cs);
+        // Get matching file names of all supplied folders.
         size_t dirs_size = dirs_pixs.size();
         pixs.Clear();
         path_ranges = std::vector<size_t>(2 * dirs_size, 0);
@@ -105,7 +121,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
     bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
     if(fetch != fetches.end() && fetch->file.IsOk())
     {
-        dc.DrawBitmap(wxBitmap(fetch->file), last_x1, last_y1, true);
+        dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
         if(flow) advance();
     }
     if(cnt_clicks)
@@ -120,10 +136,15 @@ void Peili::draw_pixs(wxPaintEvent &event)
 void Peili::advance()
 {
     wxCriticalSectionLocker lock(fetch_cs);
-    fetch = fetch == fetches.end() ? ++fetch++ : ++fetch;
-    if(fetches.size() > 1)
+    // Advance if there is next item ready. TODO: Wait until it is ready?
+    if(std::next(fetch, 1) != fetches.end())
     {
-        fetches.pop_front();
+        // Skip first item as it will be popped out.
+        std::advance(fetch, fetch == fetches.end() ? 2 : 1);
+        if(fetches.size() > 1)
+        {
+            fetches.pop_front();
+        }
     }
 }
 
@@ -351,7 +372,8 @@ DONE_RIGHT:
 
 wxThread::ExitCode Lataaja::Entry()
 {
-    if(!kehys->fetcher && fetches.size() < 0x1F)
+    // Not prefetching and should prefetch more.
+    if(!kehys->fetcher && fetches.size() /*std::distance(fetch, fetches.end())*/ < 0x1F)
     {
         kehys->fetcher = new Noutaja(kehys);
         if(kehys->fetcher->Run() != wxTHREAD_NO_ERROR)
