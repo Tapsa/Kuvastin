@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.2.16";
+const wxString Peili::APP_VER = "2016.2.18";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -57,15 +57,8 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
 
 void Peili::load_pixs()
 {
-    if(pix_loader || fetcher)
+    wait_threads();
     {
-        // Stop data handling threads. TODO: Do it outside of GUI thread?
-        working = false;
-        do
-        {
-            Sleep(200);
-        }
-        while(pix_loader || fetcher);
         wxCriticalSectionLocker lock(fetch_cs);
         // Reset prefetched file buffer.
         fetches.clear();
@@ -106,6 +99,7 @@ void Peili::load_pix(wxTimerEvent &event)
     timer_pix.Stop();
     if(pixs.IsEmpty()) return;
     load_begin = std::chrono::system_clock::now();
+    advance();
     load_image();
 }
 
@@ -122,7 +116,6 @@ void Peili::draw_pixs(wxPaintEvent &event)
     if(fetch != fetches.end() && fetch->file.IsOk())
     {
         dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
-        if(flow) advance();
     }
     if(cnt_clicks)
     {
@@ -141,9 +134,9 @@ void Peili::advance()
     {
         // Skip first item as it will be popped out.
         std::advance(fetch, fetch == fetches.end() ? 2 : 1);
-        if(fetches.size() > 1)
+        if(std::distance(fetches.begin(), fetch) > 0x2F)
         {
-            fetches.pop_front();
+            fetches.erase(fetches.begin(), std::prev(fetch, 0x1F));
         }
     }
 }
@@ -172,8 +165,7 @@ void Peili::middle_click(wxMouseEvent &event)
 
 /*void Peili::right_click(wxMouseEvent &event)
 {
-    timer_dir.Stop();
-    timer_pix.Stop();
+    wait_threads();
     unique_pixs.clear();
     pix = 0;
     unique = true;
@@ -183,20 +175,26 @@ void Peili::middle_click(wxMouseEvent &event)
     load_image();
 }*/
 
+void Peili::stop_flow()
+{
+    flow = false;
+    timer_pix.Stop();
+}
+
 void Peili::keyboard(wxKeyEvent &event)
 {
     switch(event.GetKeyCode())
     {
         case 'a':
         {
-            flow = false;
-            --fetch;
+            stop_flow();
+            if(std::prev(fetch, 1) != fetches.end()) --fetch;
             load_image();
             break;
         }
         case 'd':
         {
-            ++fetch;
+            if(std::next(fetch, 1) != fetches.end()) ++fetch;
             load_image();
             break;
         }
@@ -208,18 +206,17 @@ void Peili::keyboard(wxKeyEvent &event)
         }
         case 's':
         {
-            flow = false;
+            stop_flow();
             break;
         }
         case 'e':
         {
-            if(!flow) advance();
-            load_image();
+            timer_pix.Start(0);
             break;
         }
         case ' ':
         {
-            flow = false;
+            stop_flow();
             if(fetch != fetches.end())
             {
                 wxExecute("Explorer /select," + fetch->filename);
@@ -271,7 +268,7 @@ void Peili::load_image()
 
 wxThread::ExitCode Noutaja::Entry()
 {
-    for(size_t i = 0; kehys->working && i < 0x1F; ++i)
+    for(size_t i = 0; kehys->working && i < 0x2F; ++i)
     {
         kehys->folder_cs.Enter();
         size_t rng_beg = 0, rng_cnt = kehys->pixs.GetCount();
@@ -373,14 +370,14 @@ DONE_RIGHT:
 wxThread::ExitCode Lataaja::Entry()
 {
     // Not prefetching and should prefetch more.
-    if(!kehys->fetcher && fetches.size() /*std::distance(fetch, fetches.end())*/ < 0x1F)
+    if(!kehys->fetcher && std::distance(fetch, fetches.end()) < 0x1F)
     {
         kehys->fetcher = new Noutaja(kehys);
         if(kehys->fetcher->Run() != wxTHREAD_NO_ERROR)
         {
             delete kehys->fetcher;
             kehys->fetcher = 0;
-            return wxThread::ExitCode(1);
+            return wxThread::ExitCode(0xE1);
         }
     }
     if(fetches.empty())
@@ -397,9 +394,9 @@ wxThread::ExitCode Lataaja::Entry()
         wxQueueEvent(kehys, new wxThreadEvent());
         return wxThread::ExitCode(0x4E20 + fetches.size());
     }
-    const int &mirror_width = fetch->mirror_width, &mirror_height = fetch->mirror_height;
-    const int &img_width = fetch->img_width, &img_height = fetch->img_height;
-    const int &leftover_width = fetch->leftover_width, &leftover_height = fetch->leftover_height;
+    const int mirror_width = fetch->mirror_width, mirror_height = fetch->mirror_height;
+    const int img_width = fetch->img_width, img_height = fetch->img_height;
+    const int leftover_width = fetch->leftover_width, leftover_height = fetch->leftover_height;
     int xpos = 0, ypos = 0;
     switch(kehys->shotgun)
     {
@@ -519,21 +516,24 @@ wxString format_int(int value)
     return buffer.str();
 }
 
-void Peili::OnExit(wxCloseEvent &event)
+void Peili::wait_threads()
 {
+    // Stop data handling threads. Do it outside of GUI thread?
     timer_dir.Stop();
     timer_pix.Stop();
     if(pix_loader || fetcher)
     {
-        if(event.CanVeto())
+        working = false;
+        do
         {
-            working = false;
-            do
-            {
-                Sleep(200);
-            }
-            while(pix_loader || fetcher);
+            Sleep(200);
         }
+        while(pix_loader || fetcher);
     }
+}
+
+void Peili::OnExit(wxCloseEvent &event)
+{
+    wait_threads();
     Destroy();
 }
