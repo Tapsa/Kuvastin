@@ -55,7 +55,9 @@ public:
 
     void load_pixs();
     void load_image();
-    void advance();
+    inline void advance();
+    void wait_threads();
+    inline void stop_flow();
 
     static const wxString APP_VER, HOT_KEYS;
 
