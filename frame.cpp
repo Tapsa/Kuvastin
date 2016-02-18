@@ -61,8 +61,7 @@ void Peili::load_pixs()
     {
         wxCriticalSectionLocker lock(fetch_cs);
         // Reset prefetched file buffer.
-        fetches.clear();
-        fetch = fetches.begin();
+        fetches.erase(std::next(fetch, 1), fetches.end());
         working = true;
     }
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
@@ -134,7 +133,9 @@ void Peili::advance()
     {
         // Skip first item as it will be popped out.
         std::advance(fetch, fetch == fetches.end() ? 2 : 1);
-        if(std::distance(fetches.begin(), fetch) > 0x2F)
+        int trail = std::distance(fetches.begin(), fetch);
+        bar->SetStatusText("Trail: " + format_int(trail), 2);
+        if(trail > 0x2F)
         {
             fetches.erase(fetches.begin(), std::prev(fetch, 0x1F));
         }
@@ -369,8 +370,10 @@ DONE_RIGHT:
 
 wxThread::ExitCode Lataaja::Entry()
 {
+    int buffer = std::distance(fetch, fetches.end());
+    kehys->bar->SetStatusText("Buffer: " + format_int(buffer), 3);
     // Not prefetching and should prefetch more.
-    if(!kehys->fetcher && std::distance(fetch, fetches.end()) < 0x1F)
+    if(!kehys->fetcher && buffer < 0x1F)
     {
         kehys->fetcher = new Noutaja(kehys);
         if(kehys->fetcher->Run() != wxTHREAD_NO_ERROR)
