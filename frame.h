@@ -90,6 +90,7 @@ private:
     void clear_mirror(wxEraseEvent &event){}
     void load_pix(wxTimerEvent &event);
     void load_dir(wxTimerEvent &event);
+    void load_merged(wxTimerEvent &event);
     void left_click(wxMouseEvent &event);
     void left_down(wxMouseEvent &event);
     void left_up(wxMouseEvent &event);
@@ -101,7 +102,7 @@ private:
     wxSizer *sizer;
     wxPanel *mirror;
     wxStatusBar *bar;
-    wxTimer timer_pix, timer_dir;
+    wxTimer timer_pix, timer_dir, timer_queue;
     std::set<std::string> unique_pixs;
 };
 
