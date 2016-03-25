@@ -8,8 +8,10 @@ const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app
 "\nM = Reload folders periodically\nR = Reload folders";
 std::list<Nouto> fetches;
 std::list<Nouto>::iterator fetch;
-std::mt19937 rng;
-int last_x1, last_y1, last_x2, last_y2;
+std::mt19937 rng, rngk;
+int last_x1, last_y1, last_x2, last_y2, loading_pixs;
+bool filter_by_time;
+uint64_t recent_depth = 14;
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
@@ -37,18 +39,19 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
     bar->SetFieldsCount(5, bars);
     bar->Show(false);
 
-    Connect(wxEVT_CLOSE_WINDOW, wxCloseEventHandler(Peili::OnExit));
-    mirror->Connect(mirror->GetId(), wxEVT_PAINT, wxPaintEventHandler(Peili::draw_pixs), 0, this);
-    mirror->Connect(mirror->GetId(), wxEVT_ERASE_BACKGROUND, wxEraseEventHandler(Peili::clear_mirror), 0, this);
-    mirror->Connect(mirror->GetId(), wxEVT_MIDDLE_DOWN, wxMouseEventHandler(Peili::middle_click), 0, this);
-    mirror->Connect(mirror->GetId(), wxEVT_LEFT_DCLICK, wxMouseEventHandler(Peili::left_click), 0, this);
-    mirror->Connect(mirror->GetId(), wxEVT_LEFT_DOWN, wxMouseEventHandler(Peili::left_down), 0, this);
-    mirror->Connect(mirror->GetId(), wxEVT_LEFT_UP, wxMouseEventHandler(Peili::left_up), 0, this);
-    //mirror->Connect(mirror->GetId(), wxEVT_RIGHT_UP, wxMouseEventHandler(Peili::right_click), 0, this);
-    mirror->Connect(mirror->GetId(), wxEVT_CHAR, wxKeyEventHandler(Peili::keyboard), 0, this);
-    timer_pix.Connect(timer_pix.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_pix), 0, this);
-    timer_dir.Connect(timer_dir.GetId(), wxEVT_TIMER, wxTimerEventHandler(Peili::load_dir), 0, this);
-    Connect(wxEVT_COMMAND_THREAD, wxThreadEventHandler(Peili::thread_done));
+    Bind(wxEVT_CLOSE_WINDOW, &Peili::OnExit, this);
+    mirror->Bind(wxEVT_PAINT, &Peili::draw_pixs, this);
+    mirror->Bind(wxEVT_ERASE_BACKGROUND, &Peili::clear_mirror, this);
+    mirror->Bind(wxEVT_MIDDLE_DOWN, &Peili::middle_click, this);
+    mirror->Bind(wxEVT_LEFT_DCLICK, &Peili::left_click, this);
+    mirror->Bind(wxEVT_LEFT_DOWN, &Peili::left_down, this);
+    mirror->Bind(wxEVT_LEFT_UP, &Peili::left_up, this);
+    //mirror->Bind(wxEVT_RIGHT_UP, &Peili::right_click, this);
+    mirror->Bind(wxEVT_CHAR, &Peili::keyboard, this);
+    timer_pix.Bind(wxEVT_TIMER, &Peili::load_pix, this);
+    timer_dir.Bind(wxEVT_TIMER, &Peili::load_dir, this);
+    timer_queue.Bind(wxEVT_TIMER, &Peili::load_merged, this);
+    Bind(wxEVT_COMMAND_THREAD, &Peili::thread_done, this);
 
     wxToolTip::SetDelay(200);
     wxToolTip::SetAutoPop(32700);
@@ -65,8 +68,11 @@ void Peili::load_pixs()
         working = true;
     }
     rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
+    rngk.seed(rng());
     {
         wxCriticalSectionLocker lock(folder_cs);
+        ++loading_pixs;
+        bar->SetStatusText("Days: " + format_int(recent_depth), 4);
         // Get matching file names of all supplied folders.
         size_t dirs_size = dirs_pixs.size();
         pixs.Clear();
@@ -76,15 +82,45 @@ void Peili::load_pixs()
             path_ranges[i] = pixs.size();
             if(wxDir(dirs_pixs[i]).IsOpened())
             {
-                wxDir::GetAllFiles(dirs_pixs[i], &pixs, "*.jpg");
+                if(filter_by_time)
+                {
+                    wxArrayString files;
+                    wxDir::GetAllFiles(dirs_pixs[i], &files, "*.jpg");
+                    for(const wxString &name: files)
+                    {
+                        wxDateTime created;
+                        wxFileName(name).GetTimes(0, 0, &created);
+                        if(wxDateTime::GetTimeNow() - created.GetTicks() > 28800 + 86400 * recent_depth) continue;
+                        pixs.Add(name);
+                    }
+                }
+                else
+                {
+                    wxDir::GetAllFiles(dirs_pixs[i], &pixs, "*.jpg");
+                }
                 path_ranges[dirs_size + i] = pixs.size() - path_ranges[i];
             }
         }
+        --loading_pixs;
     }
     bar->SetStatusText("Images in show: " + format_int(pixs.GetCount()), 1);
     wxTimerEvent te;
     load_pix(te);
     if(auto_dir_reload) timer_dir.Start(time_dir);
+}
+
+void Peili::load_merged(wxTimerEvent &event)
+{
+    timer_queue.Stop();
+    if(loading_pixs)
+    {
+        timer_queue.Start(400);
+    }
+    else
+    {
+        load_pixs();
+        clean_mirror = true;
+    }
 }
 
 void Peili::load_dir(wxTimerEvent &event)
@@ -191,29 +227,29 @@ void Peili::keyboard(wxKeyEvent &event)
             stop_flow();
             if(std::prev(fetch, 1) != fetches.end()) --fetch;
             load_image();
-            break;
+            return;
         }
         case 'd':
         {
             if(std::next(fetch, 1) != fetches.end()) ++fetch;
             load_image();
-            break;
+            return;
         }
         case 'w':
         {
             flow = true;
             load_pixs();
-            break;
+            return;
         }
         case 's':
         {
             stop_flow();
-            break;
+            return;
         }
         case 'e':
         {
             timer_pix.Start(0);
-            break;
+            return;
         }
         case ' ':
         {
@@ -222,39 +258,53 @@ void Peili::keyboard(wxKeyEvent &event)
             {
                 wxExecute("Explorer /select," + fetch->filename);
             }
-            break;
+            return;
         }
         case 'b':
         {
             show_status_bar = !show_status_bar;
             bar->Show(show_status_bar);
             sizer->Layout();
-            break;
+            return;
         }
         case 'c':
         {
             cnt_clicks = !cnt_clicks;
-            break;
+            return;
         }
         case 'l':
         {
             shotgun = shotgun == Scene::ALL_OVER ? Scene::AVOID_LAST : Scene::ALL_OVER;
-            break;
+            return;
         }
         case 'm':
         {
             auto_dir_reload = !auto_dir_reload;
             if(auto_dir_reload) timer_dir.Start(time_pix);
             clean_mirror = true;
-            break;
+            return;
+        }
+        case 't':
+        {
+            filter_by_time = !filter_by_time;
         }
         case 'r':
         {
-            load_pixs();
-            clean_mirror = true;
             break;
         }
+        case '-':
+        {
+            recent_depth >>= 1;
+            break;
+        }
+        case '+':
+        {
+            recent_depth = recent_depth ? recent_depth << 1 : 1;
+            break;
+        }
+        default: return;
     }
+    timer_queue.Start(0);
 }
 
 void Peili::load_image()
@@ -279,7 +329,7 @@ wxThread::ExitCode Noutaja::Entry()
             rng_cnt = kehys->path_ranges[ranges_cnt + slot];
             rng_beg = kehys->path_ranges[slot];
         }
-        wxString picname(kehys->pixs[rng_beg + rng() % rng_cnt]);
+        wxString picname(kehys->pixs[rng_beg + rngk() % rng_cnt]);
 
         wxLogNull log;
         wxImage pic(picname, wxBITMAP_TYPE_JPEG);
@@ -522,6 +572,7 @@ wxString format_int(int value)
 void Peili::wait_threads()
 {
     // Stop data handling threads. Do it outside of GUI thread?
+    timer_queue.Stop();
     timer_dir.Stop();
     timer_pix.Stop();
     if(pix_loader || fetcher)
