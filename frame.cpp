@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.2.18";
+const wxString Peili::APP_VER = "2016.4.24";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -328,6 +328,11 @@ wxThread::ExitCode Noutaja::Entry()
             size_t ranges_cnt = kehys->path_ranges.size() / 2, slot = rng() % ranges_cnt;
             rng_cnt = kehys->path_ranges[ranges_cnt + slot];
             rng_beg = kehys->path_ranges[slot];
+        }
+        if(0 == rng_cnt)
+        {
+            kehys->folder_cs.Leave();
+            continue;
         }
         wxString picname(kehys->pixs[rng_beg + rngk() % rng_cnt]);
 
