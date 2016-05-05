@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.4.24";
+const wxString Peili::APP_VER = "2016.5.5";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -10,7 +10,7 @@ std::list<Nouto> fetches;
 std::list<Nouto>::iterator fetch;
 std::mt19937 rng, rngk;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time;
+bool filter_by_time, filter_by_size;
 uint64_t recent_depth = 14;
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings) :
@@ -302,6 +302,10 @@ void Peili::keyboard(wxKeyEvent &event)
             recent_depth = recent_depth ? recent_depth << 1 : 1;
             break;
         }
+        case 'g': // Show only large files.
+        {
+            filter_by_size = !filter_by_size;
+        }
         default: return;
     }
     timer_queue.Start(0);
@@ -407,6 +411,10 @@ DONE_RIGHT:
         {
             wxCriticalSectionLocker lock(kehys->folder_cs);
             wxRemoveFile(picname);
+        }
+        else if(filter_by_size && (img_width < mirror_width || img_height < mirror_height))
+        {
+            continue;
         }
         int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
         if(leftover_width < 0 || leftover_height < 0)
