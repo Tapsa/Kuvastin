@@ -51,7 +51,7 @@ protected:
 class Peili: public wxFrame
 {
 public:
-    Peili(const wxString&, const wxArrayString&, const wxString&);
+    Peili(const wxString&, const wxArrayString&, const wxString&, const wxArrayString&);
 
     void load_pixs();
     void load_image();
@@ -69,7 +69,7 @@ public:
         ALL_OVER
     };
 
-    wxArrayString pixs, dirs_pixs;
+    wxArrayString pixs, dirs_pixs, keywords;
     size_t drawn_cnt = 0, time_pix, time_dir;
     bool full_screen = false, clean_mirror = false, unique = false, dupl_found = false, allow_del = false, flow = true,
         equal_mix = false, cnt_clicks = false, auto_dir_reload = false, working = true, show_status_bar = false;
