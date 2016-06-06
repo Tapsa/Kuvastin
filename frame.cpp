@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.5.5";
+const wxString Peili::APP_VER = "2016.6.6";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -10,12 +10,12 @@ std::list<Nouto> fetches;
 std::list<Nouto>::iterator fetch;
 std::mt19937 rng, rngk;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time, filter_by_size;
+bool filter_by_time, filter_by_size, filter_by_name;
 uint64_t recent_depth = 14;
 
-Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings) :
+Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings, const wxArrayString &names) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
-    dirs_pixs(paths), time_pix(1000), time_dir(144000)
+    dirs_pixs(paths), keywords(names), time_pix(1000), time_dir(144000)
 {
     wxBusyCursor WaitCursor;
     SetIcon(wxIcon(AppIcon_xpm));
@@ -26,6 +26,7 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
         else if("-autodel" == settings) allow_del = true;
     }
     fetch = fetches.begin();
+    filter_by_name = keywords.size();
 
     wxPanel *panel = new wxPanel(this);
     sizer = new wxBoxSizer(wxVERTICAL);
@@ -93,6 +94,11 @@ void Peili::load_pixs()
                         if(wxDateTime::GetTimeNow() - created.GetTicks() > 28800 + 86400 * recent_depth) continue;
                         pixs.Add(name);
                     }
+                }
+                else if(filter_by_name)
+                for(const wxString &key: keywords)
+                {
+                    wxDir::GetAllFiles(dirs_pixs[i], &pixs, "*" + key + "*.jpg");
                 }
                 else
                 {
@@ -284,9 +290,22 @@ void Peili::keyboard(wxKeyEvent &event)
             clean_mirror = true;
             return;
         }
+        case 'f':
+        {
+            time_pix -= 100;
+            bar->SetStatusText("Interval: " + format_int(time_pix), 4);
+            return;
+        }
+        case 'k':
+        {
+            time_pix += 100;
+            bar->SetStatusText("Interval: " + format_int(time_pix), 4);
+            return;
+        }
         case 't':
         {
             filter_by_time = !filter_by_time;
+            break;
         }
         case 'r':
         {
@@ -305,6 +324,12 @@ void Peili::keyboard(wxKeyEvent &event)
         case 'g': // Show only large files.
         {
             filter_by_size = !filter_by_size;
+            break;
+        }
+        case 'n':
+        {
+            filter_by_name = !filter_by_name;
+            break;
         }
         default: return;
     }
@@ -412,7 +437,7 @@ DONE_RIGHT:
             wxCriticalSectionLocker lock(kehys->folder_cs);
             wxRemoveFile(picname);
         }
-        else if(filter_by_size && (img_width < mirror_width || img_height < mirror_height))
+        if(filter_by_size && img_width < mirror_width && img_height < mirror_height)
         {
             continue;
         }
