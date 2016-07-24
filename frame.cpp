@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.6.6";
+const wxString Peili::APP_VER = "2016.7.24";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -330,6 +330,17 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             filter_by_name = !filter_by_name;
             break;
+        }
+        case 'o':
+        {
+            wxTextEntryDialog dialog(this, "New keywords, separated by |");
+            if(dialog.ShowModal() == wxID_OK)
+            {
+                keywords = wxStringTokenize(dialog.GetValue(), "|");
+                filter_by_name = keywords.size();
+                break;
+            }
+            else return;
         }
         default: return;
     }
