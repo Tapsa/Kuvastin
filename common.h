@@ -22,6 +22,8 @@
 #include <wx/dcbuffer.h>
 #include <wx/dir.h>
 //#include <wx/thread.h>
+#include <wx/textdlg.h>
+#include <wx/tokenzr.h>
 #include <wx/log.h>
 
 // #define NDEBUG
