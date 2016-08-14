@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.7.24";
+const wxString Peili::APP_VER = "2016.8.14";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -9,9 +9,12 @@ const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app
 std::list<Nouto> fetches;
 std::list<Nouto>::iterator fetch;
 std::mt19937 rng, rngk;
+std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time, filter_by_size, filter_by_name;
+bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip;
 uint64_t recent_depth = 14;
+wxBitmap unzipped;
+wxPen big_red_pen(*wxRED, 2);
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings, const wxArrayString &names) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
@@ -153,10 +156,24 @@ void Peili::draw_pixs(wxPaintEvent &event)
         dc.Clear();
         clean_mirror = false;
     }
-    bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
-    if(fetch != fetches.end() && fetch->file.IsOk())
+    if(unzipping)
     {
-        dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
+        if(unzipped.IsOk()) dc.DrawBitmap(unzipped, 0, 0, true);
+        if(rip_zip)
+        {
+            dc.SetPen(big_red_pen);
+            dc.DrawLine(0, 0, 720, 720);
+            dc.DrawLine(0, 720, 720, 0);
+            rip_zip = false;
+        }
+    }
+    else
+    {
+        bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
+        if(fetch != fetches.end() && fetch->file.IsOk())
+        {
+            dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
+        }
     }
     if(cnt_clicks)
     {
@@ -230,15 +247,31 @@ void Peili::keyboard(wxKeyEvent &event)
     {
         case 'a':
         {
-            stop_flow();
-            if(std::prev(fetch, 1) != fetches.end()) --fetch;
-            load_image();
+            if(unzipping)
+            {
+                cur_zip = (cur_zip - 1 + zips.GetCount()) % zips.GetCount();
+                unzip_image();
+            }
+            else
+            {
+                stop_flow();
+                if(std::prev(fetch, 1) != fetches.end()) --fetch;
+                load_image();
+            }
             return;
         }
         case 'd':
         {
-            if(std::next(fetch, 1) != fetches.end()) ++fetch;
-            load_image();
+            if(unzipping)
+            {
+                cur_zip = (cur_zip + 1) % zips.GetCount();
+                unzip_image();
+            }
+            else
+            {
+                if(std::next(fetch, 1) != fetches.end()) ++fetch;
+                load_image();
+            }
             return;
         }
         case 'w':
@@ -254,15 +287,29 @@ void Peili::keyboard(wxKeyEvent &event)
         }
         case 'e':
         {
-            timer_pix.Start(0);
+            if(unzipping)
+            {
+                unzip_image(true);
+            }
+            else
+            {
+                timer_pix.Start(0);
+            }
             return;
         }
         case ' ':
         {
-            stop_flow();
-            if(fetch != fetches.end())
+            if(unzipping)
             {
-                wxExecute("Explorer /select," + fetch->filename);
+                wxExecute("Explorer /select," + zips[cur_zip]);
+            }
+            else
+            {
+                stop_flow();
+                if(fetch != fetches.end())
+                {
+                    wxExecute("Explorer /select," + fetch->filename);
+                }
             }
             return;
         }
@@ -300,6 +347,30 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             time_pix += 100;
             bar->SetStatusText("Interval: " + format_int(time_pix), 4);
+            return;
+        }
+        case 'z': // Toggle ZIP mode on/off.
+        {
+            unzipping = !unzipping;
+            if(unzipping) // Set folder whose ZIP files are browsed.
+            {
+                wait_threads();
+                wxDirDialog dialog(this, "Folder containing ZIPs");
+                if(dialog.ShowModal() == wxID_OK)
+                {
+                    cur_zip = 0;
+                    zips.Clear();
+                    wxDir::GetAllFiles(dialog.GetPath(), &zips, "*.zip");
+                    unzip_image();
+                }
+            }
+            return;
+        }
+        case 'x': // Delete ZIP file.
+        {
+            rip_zip = true;
+            wxRenameFile(zips[cur_zip], zips[cur_zip].Left(3) + "RODE\\" + zips[cur_zip].AfterLast('\\'), false);
+            next_entry();
             return;
         }
         case 't':
@@ -347,6 +418,43 @@ void Peili::keyboard(wxKeyEvent &event)
     timer_queue.Start(0);
 }
 
+void Peili::unzip_image(bool random)
+{
+    wxFFileInputStream trash(zips[cur_zip]);
+    wxZipInputStream zip(trash);
+    int mirror_width, mirror_height;
+    mirror->GetClientSize(&mirror_width, &mirror_height);
+    entry.reset(zip.GetNextEntry());
+    if(random)
+    {
+        int dart = rng() % zip.GetTotalEntries();
+        while(--dart > 0)
+        {
+            entry.reset(zip.GetNextEntry());
+        }
+    }
+    if(entry.get())
+    {
+        wxImage pic(zip, wxBITMAP_TYPE_JPEG);
+        int img_width = pic.GetWidth(), img_height = pic.GetHeight();
+        int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
+        if(leftover_width < 0 || leftover_height < 0)
+        {
+            float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
+            img_width *= prop;
+            img_height *= prop;
+            pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
+        }
+        unzipped = wxBitmap(pic);
+    }
+    next_entry();
+}
+
+void Peili::next_entry()
+{
+    mirror->Refresh();
+}
+
 void Peili::load_image()
 {
     pix_loader = new Lataaja(this);
@@ -365,7 +473,7 @@ wxThread::ExitCode Noutaja::Entry()
         size_t rng_beg = 0, rng_cnt = kehys->pixs.GetCount();
         if(kehys->equal_mix)
         {
-            size_t ranges_cnt = kehys->path_ranges.size() / 2, slot = rng() % ranges_cnt;
+            size_t ranges_cnt = kehys->path_ranges.size() >> 1, slot = rng() % ranges_cnt;
             rng_cnt = kehys->path_ranges[ranges_cnt + slot];
             rng_beg = kehys->path_ranges[slot];
         }
@@ -441,8 +549,7 @@ DONE_RIGHT:
                 pic = pic.GetSubImage(crop);
             }
         }
-        int img_width = pic.GetWidth();
-        int img_height = pic.GetHeight();
+        int img_width = pic.GetWidth(), img_height = pic.GetHeight();
         if(kehys->allow_del && ((img_width < 960 && img_height < 960) || img_width < 640 || img_height < 640))
         {
             wxCriticalSectionLocker lock(kehys->folder_cs);

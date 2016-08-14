@@ -9,6 +9,7 @@
 #include <set>
 #include <list>
 #include <vector>
+#include <memory>
 //#include <algorithm>
 #include <cstring>
 //#include <boost/lexical_cast.hpp>
@@ -23,7 +24,10 @@
 #include <wx/dir.h>
 //#include <wx/thread.h>
 #include <wx/textdlg.h>
+#include <wx/dirdlg.h>
 #include <wx/tokenzr.h>
+#include <wx/wfstream.h>
+#include <wx/zipstrm.h>
 #include <wx/log.h>
 
 // #define NDEBUG

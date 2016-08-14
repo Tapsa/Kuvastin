@@ -58,6 +58,8 @@ public:
     inline void advance();
     void wait_threads();
     inline void stop_flow();
+    void unzip_image(bool = false);
+    void next_entry();
 
     static const wxString APP_VER, HOT_KEYS;
 
@@ -69,8 +71,8 @@ public:
         ALL_OVER
     };
 
-    wxArrayString pixs, dirs_pixs, keywords;
-    size_t drawn_cnt = 0, time_pix, time_dir;
+    wxArrayString pixs, dirs_pixs, keywords, zips;
+    size_t drawn_cnt = 0, time_pix, time_dir, cur_zip = 0;
     bool full_screen = false, clean_mirror = false, unique = false, dupl_found = false, allow_del = false, flow = true,
         equal_mix = false, cnt_clicks = false, auto_dir_reload = false, working = true, show_status_bar = false;
     std::chrono::time_point<std::chrono::system_clock> load_begin;
