@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.8.14";
+const wxString Peili::APP_VER = "2016.8.19";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -13,7 +13,7 @@ std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip;
 uint64_t recent_depth = 14;
-wxString zip_name;
+wxString zip_name, trash;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
 
@@ -374,8 +374,17 @@ void Peili::keyboard(wxKeyEvent &event)
         }
         case 'x': // Delete ZIP file.
         {
+            if(!trash)
+            {
+                wxDirDialog dialog(this, "Choose folder for trash");
+                if(dialog.ShowModal() == wxID_OK)
+                {
+                    trash = dialog.GetPath() + "\\";
+                }
+                else return;
+            }
             rip_zip = true;
-            wxRenameFile(zips[cur_zip], zips[cur_zip].Left(3) + "RODE\\" + zips[cur_zip].AfterLast('\\'), false);
+            wxRenameFile(zips[cur_zip], trash + zips[cur_zip].AfterLast('\\'), false);
             next_entry();
             return;
         }
@@ -432,8 +441,8 @@ void Peili::unzip_image(bool random)
         mirror->Refresh();
         return;
     }
-    wxFFileInputStream trash(zips[cur_zip]);
-    wxZipInputStream zip(trash);
+    wxFFileInputStream necessity(zips[cur_zip]);
+    wxZipInputStream zip(necessity);
     int mirror_width, mirror_height;
     mirror->GetClientSize(&mirror_width, &mirror_height);
     entry.reset(zip.GetNextEntry());
