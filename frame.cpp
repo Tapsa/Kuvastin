@@ -13,6 +13,7 @@ std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip;
 uint64_t recent_depth = 14;
+wxString zip_name;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
 
@@ -158,7 +159,12 @@ void Peili::draw_pixs(wxPaintEvent &event)
     }
     if(unzipping)
     {
-        if(unzipped.IsOk()) dc.DrawBitmap(unzipped, 0, 0, true);
+        if(unzipped.IsOk())
+        {
+            dc.DrawBitmap(unzipped, 0, 0, true);
+            dc.SetBackgroundMode(wxPENSTYLE_SOLID);
+            dc.DrawText(zip_name, 2, 2);
+        }
         if(rip_zip)
         {
             dc.SetPen(big_red_pen);
@@ -420,6 +426,12 @@ void Peili::keyboard(wxKeyEvent &event)
 
 void Peili::unzip_image(bool random)
 {
+    if(!wxFileName(zips[cur_zip]).FileExists())
+    {
+        clean_mirror = true;
+        mirror->Refresh();
+        return;
+    }
     wxFFileInputStream trash(zips[cur_zip]);
     wxZipInputStream zip(trash);
     int mirror_width, mirror_height;
@@ -436,6 +448,7 @@ void Peili::unzip_image(bool random)
     if(entry.get())
     {
         wxImage pic(zip, wxBITMAP_TYPE_JPEG);
+        zip_name = zips[cur_zip].AfterLast('\\');
         int img_width = pic.GetWidth(), img_height = pic.GetHeight();
         int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
         if(leftover_width < 0 || leftover_height < 0)
