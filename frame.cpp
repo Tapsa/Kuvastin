@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.8.19";
+const wxString Peili::APP_VER = "2016.11.7";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -32,12 +32,14 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
     fetch = fetches.begin();
     filter_by_name = keywords.size();
 
-    wxPanel *panel = new wxPanel(this);
-    sizer = new wxBoxSizer(wxVERTICAL);
+    panel = new wxPanel(this);
+    sizer = new wxBoxSizer(wxHORIZONTAL);
+    spreader = new wxBoxSizer(wxVERTICAL);
     mirror = new wxPanel(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
     bar = new wxStatusBar(panel);
-    sizer->Add(mirror, 1, wxEXPAND);
-    sizer->Add(bar, 0, wxEXPAND);
+    spreader->Add(mirror, 1, wxEXPAND);
+    spreader->Add(bar, 0, wxEXPAND);
+    sizer->Add(spreader, 1, wxEXPAND);
     panel->SetSizer(sizer);
 
     int bars[] = {295, 145, 145, 145, -1};
@@ -364,8 +366,8 @@ void Peili::keyboard(wxKeyEvent &event)
                 wxDirDialog dialog(this, "Folder containing ZIPs");
                 if(dialog.ShowModal() == wxID_OK)
                 {
-                    cur_zip = 0;
                     zips.Clear();
+                    cur_zip = 0;
                     wxDir::GetAllFiles(dialog.GetPath(), &zips, "*.zip");
                     unzip_image();
                 }
@@ -427,6 +429,65 @@ void Peili::keyboard(wxKeyEvent &event)
                 break;
             }
             else return;
+        }
+        case 'u':
+        {
+            mirror->Unbind(wxEVT_CHAR, &Peili::keyboard, this);
+            zip_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxSize(200, -1));
+            sizer->Insert(0, zip_list, 0, wxEXPAND);
+            wait_threads();
+
+            wxFlexGridSizer *options_grid = new wxFlexGridSizer(2);
+            wxStaticText *label1 = new wxStaticText(panel, wxID_ANY, " Path to zips ");
+            wxDirPickerCtrl *path2zips = new wxDirPickerCtrl(panel, wxID_ANY);
+            wxStaticText *label3 = new wxStaticText(panel, wxID_ANY, " Path to unzips ");
+            wxDirPickerCtrl *path2unzips = new wxDirPickerCtrl(panel, wxID_ANY);
+            wxStaticText *label2 = new wxStaticText(panel, wxID_ANY, " Search for ");
+            wxTextCtrl *zip_search = new wxTextCtrl(panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+            wxStaticText *label4 = new wxStaticText(panel, wxID_ANY, " 1st file in zip ");
+            wxStaticText *first_file = new wxStaticText(panel, wxID_ANY, "");
+            wxStaticText *label6 = new wxStaticText(panel, wxID_ANY, " 1st match in unzips ");
+            wxStaticText *first_ufile = new wxStaticText(panel, wxID_ANY, "");
+            wxStaticText *label5 = new wxStaticText(panel, wxID_ANY, " Common name until ");
+            wxTextCtrl *name_clipper = new wxTextCtrl(panel, wxID_ANY, "-", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+
+            zip_search->Bind(wxEVT_COMMAND_TEXT_ENTER, [=](wxCommandEvent&)
+            {
+                zips.Clear();
+                cur_zip = 0;
+                wxArrayString listed_names;
+                wxDir::GetAllFiles(path2zips->GetPath(), &zips, "*" + zip_search->GetValue() + "*.zip");
+                for(const wxString& name: zips)
+                {
+                    listed_names.Add(name.AfterLast('\\'));
+                }
+                zip_list->Set(listed_names);
+                unzip_image();
+            });
+
+            zip_list->Bind(wxEVT_LISTBOX, [=](wxCommandEvent &event)
+            {
+                cur_zip = event.GetSelection();
+                unzip_image();
+            });
+
+            options_grid->Add(label1);
+            options_grid->Add(path2zips, 1, wxEXPAND);
+            options_grid->Add(label3);
+            options_grid->Add(path2unzips, 1, wxEXPAND);
+            options_grid->Add(label2);
+            options_grid->Add(zip_search, 1, wxEXPAND);
+            options_grid->Add(label4);
+            options_grid->Add(first_file, 1, wxEXPAND);
+            options_grid->Add(label6);
+            options_grid->Add(first_ufile, 1, wxEXPAND);
+            options_grid->Add(label5);
+            options_grid->Add(name_clipper);
+            options_grid->AddGrowableCol(1, 1);
+            spreader->Insert(0, options_grid, 0, wxEXPAND);
+            sizer->Layout();
+            unzipping = true;
+            return;
         }
         default: return;
     }
