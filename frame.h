@@ -101,9 +101,10 @@ private:
     void thread_done(wxThreadEvent &event);
     void keyboard(wxKeyEvent &event);
 
-    wxSizer *sizer;
-    wxPanel *mirror;
+    wxPanel *panel, *mirror;
+    wxSizer *sizer, *spreader;
     wxStatusBar *bar;
+    wxListBox *zip_list;
     wxTimer timer_pix, timer_dir, timer_queue;
     std::set<std::string> unique_pixs;
 };
