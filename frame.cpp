@@ -423,6 +423,8 @@ void Peili::keyboard(wxKeyEvent &event)
                 if(dialog.ShowModal() == wxID_OK)
                 {
                     trash = dialog.GetPath() + "\\";
+                    wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+                    settings.Write("Trash", trash);
                 }
                 else return;
             }
@@ -478,6 +480,7 @@ void Peili::keyboard(wxKeyEvent &event)
             wait_threads();
 
             wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+            settings.Read("Trash", &trash);
             wxFlexGridSizer *options_grid = new wxFlexGridSizer(2);
             wxStaticText *label1 = new wxStaticText(panel, wxID_ANY, " Path to zips ");
             wxDirPickerCtrl *path2zips = new wxDirPickerCtrl(panel, wxID_ANY, settings.Read("Path2zips", ""));
@@ -521,14 +524,19 @@ void Peili::keyboard(wxKeyEvent &event)
             auto split_entry_name = [=]()
             {
                 int axe_pos = entry_name.Find(name_clipper->GetValue());
-                wxString common_part = entry_name.Left(axe_pos);
+                wxString common_part = entry_name.Left(axe_pos), uname;
 
-                wxArrayString pixs;
-                wxDir::GetAllFiles(path2unzips->GetPath(), &pixs, common_part + "*.jpg");
-                unzip_image(0, pixs.GetCount() ? pixs[0].AfterLast('\\') : "");
+                if(entry_name.Len())
+                {
+                    wxArrayString pixs;
+                    wxDir::GetAllFiles(path2unzips->GetPath(), &pixs, common_part + "*.jpg");
+                    uname = pixs.GetCount() ? pixs[0].AfterLast('\\') : "";
+                    unzip_image(0, uname);
+                }
 
                 wxString remainder = entry_name.Mid(axe_pos);
                 first_file->SetLabel(common_part + "|" + remainder);
+                first_ufile->SetLabel(uname);
             };
 
             zip_list->Bind(wxEVT_LISTBOX, [=](wxCommandEvent &event)
@@ -569,6 +577,7 @@ void Peili::keyboard(wxKeyEvent &event)
 void Peili::unzip_image(int random, wxString name)
 {
     cur_entry = 0;
+    entry_name = "";
     if(!(cur_zip < zips.GetCount() && wxFileName(zips[cur_zip]).FileExists()))
     {
         clean_mirror = true;
