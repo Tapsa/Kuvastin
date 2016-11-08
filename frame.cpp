@@ -13,7 +13,7 @@ std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip;
 uint64_t recent_depth = 14;
-wxString zip_name, trash;
+wxString zip_name, trash, entry_name;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
 
@@ -257,8 +257,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
-                cur_zip = (cur_zip - 1 + zips.GetCount()) % zips.GetCount();
-                unzip_image();
+                unzip_image(--cur_entry);
             }
             else
             {
@@ -272,8 +271,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
-                cur_zip = (cur_zip + 1) % zips.GetCount();
-                unzip_image();
+                unzip_image(++cur_entry);
             }
             else
             {
@@ -284,20 +282,36 @@ void Peili::keyboard(wxKeyEvent &event)
         }
         case 'w':
         {
-            flow = true;
-            load_pixs();
+            if(unzipping)
+            {
+                cur_zip = (cur_zip - 1 + zips.GetCount()) % zips.GetCount();
+                unzip_image();
+            }
+            else
+            {
+                flow = true;
+                load_pixs();
+            }
             return;
         }
         case 's':
         {
-            stop_flow();
+            if(unzipping)
+            {
+                cur_zip = (cur_zip + 1) % zips.GetCount();
+                unzip_image();
+            }
+            else
+            {
+                stop_flow();
+            }
             return;
         }
         case 'e':
         {
             if(unzipping)
             {
-                unzip_image(true);
+                unzip_image(-1);
             }
             else
             {
@@ -432,16 +446,16 @@ void Peili::keyboard(wxKeyEvent &event)
         }
         case 'u':
         {
-            mirror->Unbind(wxEVT_CHAR, &Peili::keyboard, this);
             zip_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxSize(200, -1));
             sizer->Insert(0, zip_list, 0, wxEXPAND);
             wait_threads();
 
+            wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
             wxFlexGridSizer *options_grid = new wxFlexGridSizer(2);
             wxStaticText *label1 = new wxStaticText(panel, wxID_ANY, " Path to zips ");
-            wxDirPickerCtrl *path2zips = new wxDirPickerCtrl(panel, wxID_ANY);
+            wxDirPickerCtrl *path2zips = new wxDirPickerCtrl(panel, wxID_ANY, settings.Read("Path2zips", ""));
             wxStaticText *label3 = new wxStaticText(panel, wxID_ANY, " Path to unzips ");
-            wxDirPickerCtrl *path2unzips = new wxDirPickerCtrl(panel, wxID_ANY);
+            wxDirPickerCtrl *path2unzips = new wxDirPickerCtrl(panel, wxID_ANY, settings.Read("Path2unzips", ""));
             wxStaticText *label2 = new wxStaticText(panel, wxID_ANY, " Search for ");
             wxTextCtrl *zip_search = new wxTextCtrl(panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
             wxStaticText *label4 = new wxStaticText(panel, wxID_ANY, " 1st file in zip ");
@@ -449,7 +463,19 @@ void Peili::keyboard(wxKeyEvent &event)
             wxStaticText *label6 = new wxStaticText(panel, wxID_ANY, " 1st match in unzips ");
             wxStaticText *first_ufile = new wxStaticText(panel, wxID_ANY, "");
             wxStaticText *label5 = new wxStaticText(panel, wxID_ANY, " Common name until ");
-            wxTextCtrl *name_clipper = new wxTextCtrl(panel, wxID_ANY, "-", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+            wxTextCtrl *name_clipper = new wxTextCtrl(panel, wxID_ANY, "_", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+
+            path2zips->Bind(wxEVT_DIRPICKER_CHANGED, [](wxFileDirPickerEvent &event)
+            {
+                wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+                settings.Write("Path2zips", event.GetPath());
+            });
+
+            path2unzips->Bind(wxEVT_DIRPICKER_CHANGED, [](wxFileDirPickerEvent &event)
+            {
+                wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+                settings.Write("Path2unzips", event.GetPath());
+            });
 
             zip_search->Bind(wxEVT_COMMAND_TEXT_ENTER, [=](wxCommandEvent&)
             {
@@ -465,10 +491,29 @@ void Peili::keyboard(wxKeyEvent &event)
                 unzip_image();
             });
 
+            auto split_entry_name = [=]()
+            {
+                int axe_pos = entry_name.Find(name_clipper->GetValue());
+                wxString common_part = entry_name.Left(axe_pos);
+
+                wxArrayString pixs;
+                wxDir::GetAllFiles(path2unzips->GetPath(), &pixs, common_part + "*.jpg");
+                unzip_image(0, pixs.GetCount() ? pixs[0].AfterLast('\\') : "");
+
+                wxString remainder = entry_name.Mid(axe_pos);
+                first_file->SetLabel(common_part + "|" + remainder);
+            };
+
             zip_list->Bind(wxEVT_LISTBOX, [=](wxCommandEvent &event)
             {
                 cur_zip = event.GetSelection();
                 unzip_image();
+                split_entry_name();
+            });
+
+            name_clipper->Bind(wxEVT_COMMAND_TEXT_ENTER, [=](wxCommandEvent&)
+            {
+                split_entry_name();
             });
 
             options_grid->Add(label1);
@@ -494,8 +539,9 @@ void Peili::keyboard(wxKeyEvent &event)
     timer_queue.Start(0);
 }
 
-void Peili::unzip_image(bool random)
+void Peili::unzip_image(int random, wxString name)
 {
+    cur_entry = 0;
     if(!wxFileName(zips[cur_zip]).FileExists())
     {
         clean_mirror = true;
@@ -507,18 +553,36 @@ void Peili::unzip_image(bool random)
     int mirror_width, mirror_height;
     mirror->GetClientSize(&mirror_width, &mirror_height);
     entry.reset(zip.GetNextEntry());
-    if(random)
+    if(name.Len())
+    {
+        while(entry && name != entry->GetName())
+        {
+            entry.reset(zip.GetNextEntry());
+            ++cur_entry;
+        }
+    }
+    else if(random < 0)
     {
         int dart = rng() % zip.GetTotalEntries();
         while(--dart > 0)
         {
             entry.reset(zip.GetNextEntry());
+            ++cur_entry;
         }
     }
-    if(entry.get())
+    else if(random > 0)
+    {
+        while(entry && random > cur_entry)
+        {
+            entry.reset(zip.GetNextEntry());
+            ++cur_entry;
+        }
+    }
+    if(entry)
     {
         wxImage pic(zip, wxBITMAP_TYPE_JPEG);
         zip_name = zips[cur_zip].AfterLast('\\');
+        entry_name = entry->GetName();
         int img_width = pic.GetWidth(), img_height = pic.GetHeight();
         int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
         if(leftover_width < 0 || leftover_height < 0)
@@ -530,6 +594,7 @@ void Peili::unzip_image(bool random)
         }
         unzipped = wxBitmap(pic);
     }
+    else clean_mirror = true;
     next_entry();
 }
 
