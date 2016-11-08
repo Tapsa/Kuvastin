@@ -104,7 +104,7 @@ private:
     wxPanel *panel, *mirror;
     wxSizer *sizer, *spreader;
     wxStatusBar *bar;
-    wxListBox *zip_list;
+    wxListBox *zip_list = 0;
     wxTimer timer_pix, timer_dir, timer_queue;
     std::set<std::string> unique_pixs;
 };

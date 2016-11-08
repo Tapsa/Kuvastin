@@ -54,7 +54,7 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
     mirror->Bind(wxEVT_LEFT_DOWN, &Peili::left_down, this);
     mirror->Bind(wxEVT_LEFT_UP, &Peili::left_up, this);
     //mirror->Bind(wxEVT_RIGHT_UP, &Peili::right_click, this);
-    mirror->Bind(wxEVT_CHAR, &Peili::keyboard, this);
+    mirror->Bind(wxEVT_KEY_DOWN, &Peili::keyboard, this);
     timer_pix.Bind(wxEVT_TIMER, &Peili::load_pix, this);
     timer_dir.Bind(wxEVT_TIMER, &Peili::load_dir, this);
     timer_queue.Bind(wxEVT_TIMER, &Peili::load_merged, this);
@@ -212,6 +212,7 @@ void Peili::advance()
 void Peili::left_down(wxMouseEvent &event)
 {
     ++lmb_down;
+    mirror->SetFocus();
 }
 
 void Peili::left_up(wxMouseEvent &event)
@@ -253,7 +254,7 @@ void Peili::keyboard(wxKeyEvent &event)
 {
     switch(event.GetKeyCode())
     {
-        case 'a':
+        case 'A':
         {
             if(unzipping)
             {
@@ -267,7 +268,7 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
-        case 'd':
+        case 'D':
         {
             if(unzipping)
             {
@@ -280,12 +281,25 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
-        case 'w':
+        case 'W':
         {
             if(unzipping)
             {
-                cur_zip = (cur_zip - 1 + zips.GetCount()) % zips.GetCount();
-                unzip_image();
+                if(zip_list)
+                {
+                    if(zip_list->GetCount())
+                    {
+                        wxCommandEvent select(wxEVT_LISTBOX);
+                        select.SetInt(std::max(zip_list->GetSelection() - 1, 0));
+                        zip_list->SetSelection(select.GetSelection());
+                        zip_list->GetEventHandler()->ProcessEvent(select);
+                    }
+                }
+                else
+                {
+                    cur_zip = (cur_zip - 1 + zips.GetCount()) % zips.GetCount();
+                    unzip_image();
+                }
             }
             else
             {
@@ -294,12 +308,25 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
-        case 's':
+        case 'S':
         {
             if(unzipping)
             {
-                cur_zip = (cur_zip + 1) % zips.GetCount();
-                unzip_image();
+                if(zip_list)
+                {
+                    if(zip_list->GetCount())
+                    {
+                        wxCommandEvent select(wxEVT_LISTBOX);
+                        select.SetInt(std::min(zip_list->GetSelection() + 1, int(zip_list->GetCount()) - 1));
+                        zip_list->SetSelection(select.GetSelection());
+                        zip_list->GetEventHandler()->ProcessEvent(select);
+                    }
+                }
+                else
+                {
+                    cur_zip = (cur_zip + 1) % zips.GetCount();
+                    unzip_image();
+                }
             }
             else
             {
@@ -307,7 +334,7 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
-        case 'e':
+        case 'E':
         {
             if(unzipping)
             {
@@ -335,43 +362,43 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
-        case 'b':
+        case 'B':
         {
             show_status_bar = !show_status_bar;
             bar->Show(show_status_bar);
             sizer->Layout();
             return;
         }
-        case 'c':
+        case 'C':
         {
             cnt_clicks = !cnt_clicks;
             return;
         }
-        case 'l':
+        case 'L':
         {
             shotgun = shotgun == Scene::ALL_OVER ? Scene::AVOID_LAST : Scene::ALL_OVER;
             return;
         }
-        case 'm':
+        case 'M':
         {
             auto_dir_reload = !auto_dir_reload;
             if(auto_dir_reload) timer_dir.Start(time_pix);
             clean_mirror = true;
             return;
         }
-        case 'f':
+        case 'F':
         {
             time_pix -= 100;
             bar->SetStatusText("Interval: " + format_int(time_pix), 4);
             return;
         }
-        case 'k':
+        case 'K':
         {
             time_pix += 100;
             bar->SetStatusText("Interval: " + format_int(time_pix), 4);
             return;
         }
-        case 'z': // Toggle ZIP mode on/off.
+        case 'Z': // Toggle ZIP mode on/off.
         {
             unzipping = !unzipping;
             if(unzipping) // Set folder whose ZIP files are browsed.
@@ -388,7 +415,7 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
-        case 'x': // Delete ZIP file.
+        case 'X': // Delete ZIP file.
         {
             if(!trash)
             {
@@ -404,12 +431,12 @@ void Peili::keyboard(wxKeyEvent &event)
             next_entry();
             return;
         }
-        case 't':
+        case 'T':
         {
             filter_by_time = !filter_by_time;
             break;
         }
-        case 'r':
+        case 'R':
         {
             break;
         }
@@ -423,17 +450,17 @@ void Peili::keyboard(wxKeyEvent &event)
             recent_depth = recent_depth ? recent_depth << 1 : 1;
             break;
         }
-        case 'g': // Show only large files.
+        case 'G': // Show only large files.
         {
             filter_by_size = !filter_by_size;
             break;
         }
-        case 'n':
+        case 'N':
         {
             filter_by_name = !filter_by_name;
             break;
         }
-        case 'o':
+        case 'O':
         {
             wxTextEntryDialog dialog(this, "New keywords, separated by |");
             if(dialog.ShowModal() == wxID_OK)
@@ -444,7 +471,7 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             else return;
         }
-        case 'u':
+        case 'U':
         {
             zip_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxSize(200, -1));
             sizer->Insert(0, zip_list, 0, wxEXPAND);
@@ -542,7 +569,7 @@ void Peili::keyboard(wxKeyEvent &event)
 void Peili::unzip_image(int random, wxString name)
 {
     cur_entry = 0;
-    if(!wxFileName(zips[cur_zip]).FileExists())
+    if(!(cur_zip < zips.GetCount() && wxFileName(zips[cur_zip]).FileExists()))
     {
         clean_mirror = true;
         mirror->Refresh();
