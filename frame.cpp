@@ -157,6 +157,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
     {
         dc.SetBackground(*wxBLACK_BRUSH);
         dc.Clear();
+        unzipped = wxBitmap();
         clean_mirror = false;
     }
     if(unzipping)
@@ -523,10 +524,10 @@ void Peili::keyboard(wxKeyEvent &event)
 
             auto split_entry_name = [=]()
             {
-                int axe_pos = entry_name.Find(name_clipper->GetValue());
+                int axe_pos = entry_name.rfind(name_clipper->GetValue()) + 1;
                 wxString common_part = entry_name.Left(axe_pos), uname;
 
-                if(entry_name.Len())
+                if(common_part.Len() > 1)
                 {
                     wxArrayString pixs;
                     wxDir::GetAllFiles(path2unzips->GetPath(), &pixs, common_part + "*.jpg");
