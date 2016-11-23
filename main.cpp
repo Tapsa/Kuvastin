@@ -4,8 +4,11 @@ IMPLEMENT_APP(Kuvastin)
 
 bool Kuvastin::OnInit()
 {
-    Peili* window;
+    SetVendorName("Tapsa");
+    SetAppName("Kuvastin");
     wxImage::AddHandler(new wxJPEGHandler);
+
+    Peili* window;
     wxString settings;
     wxArrayString paths, names;
     for(size_t a = 1; a < wxApp::argc; ++a)
