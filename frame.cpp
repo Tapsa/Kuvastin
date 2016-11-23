@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.11.7";
+const wxString Peili::APP_VER = "2016.11.20";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -167,6 +167,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
             dc.DrawBitmap(unzipped, 0, 0, true);
             dc.SetBackgroundMode(wxPENSTYLE_SOLID);
             dc.DrawText(zip_name, 2, 2);
+            dc.DrawText(entry_name, 2, 20);
         }
         if(rip_zip)
         {
@@ -424,7 +425,7 @@ void Peili::keyboard(wxKeyEvent &event)
                 if(dialog.ShowModal() == wxID_OK)
                 {
                     trash = dialog.GetPath() + "\\";
-                    wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+                    wxFileConfig settings("Kuvastin", "Tapsa");
                     settings.Write("Trash", trash);
                 }
                 else return;
@@ -480,7 +481,7 @@ void Peili::keyboard(wxKeyEvent &event)
             sizer->Insert(0, zip_list, 0, wxEXPAND);
             wait_threads();
 
-            wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+            wxFileConfig settings("Kuvastin", "Tapsa");
             settings.Read("Trash", &trash);
             wxFlexGridSizer *options_grid = new wxFlexGridSizer(2);
             wxStaticText *label1 = new wxStaticText(panel, wxID_ANY, " Path to zips ");
@@ -490,21 +491,21 @@ void Peili::keyboard(wxKeyEvent &event)
             wxStaticText *label2 = new wxStaticText(panel, wxID_ANY, " Search for ");
             wxTextCtrl *zip_search = new wxTextCtrl(panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
             wxStaticText *label4 = new wxStaticText(panel, wxID_ANY, " 1st file in zip ");
-            wxStaticText *first_file = new wxStaticText(panel, wxID_ANY, "");
+            wxStaticText *first_file = new wxStaticText(panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE);
             wxStaticText *label6 = new wxStaticText(panel, wxID_ANY, " 1st match in unzips ");
-            wxStaticText *first_ufile = new wxStaticText(panel, wxID_ANY, "");
+            wxStaticText *first_ufile = new wxStaticText(panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE);
             wxStaticText *label5 = new wxStaticText(panel, wxID_ANY, " Common name until ");
             wxTextCtrl *name_clipper = new wxTextCtrl(panel, wxID_ANY, "_", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
 
             path2zips->Bind(wxEVT_DIRPICKER_CHANGED, [](wxFileDirPickerEvent &event)
             {
-                wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+                wxFileConfig settings("Kuvastin", "Tapsa");
                 settings.Write("Path2zips", event.GetPath());
             });
 
             path2unzips->Bind(wxEVT_DIRPICKER_CHANGED, [](wxFileDirPickerEvent &event)
             {
-                wxFileConfig settings("Kuvastin", "Tapsa", "Kuvastin.ini");
+                wxFileConfig settings("Kuvastin", "Tapsa");
                 settings.Write("Path2unzips", event.GetPath());
             });
 
@@ -519,6 +520,7 @@ void Peili::keyboard(wxKeyEvent &event)
                     listed_names.Add(name.AfterLast('\\'));
                 }
                 zip_list->Set(listed_names);
+                zip_list->SetBackgroundColour(*wxWHITE);
                 unzip_image();
             });
 
@@ -533,11 +535,14 @@ void Peili::keyboard(wxKeyEvent &event)
                     wxDir::GetAllFiles(path2unzips->GetPath(), &pixs, common_part + "*.jpg");
                     uname = pixs.GetCount() ? pixs[0].AfterLast('\\') : "";
                     unzip_image(0, uname);
+                    zip_list->SetBackgroundColour(uname.Len() ? wxColour(100, 240, 100) : wxColour(240, 100, 100));
                 }
+                else zip_list->SetBackgroundColour(*wxWHITE);
 
                 wxString remainder = entry_name.Mid(axe_pos);
                 first_file->SetLabel(common_part + "|" + remainder);
                 first_ufile->SetLabel(uname);
+                zip_list->Refresh();
             };
 
             zip_list->Bind(wxEVT_LISTBOX, [=](wxCommandEvent &event)
