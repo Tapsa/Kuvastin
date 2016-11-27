@@ -11,11 +11,12 @@ std::list<Nouto>::iterator fetch;
 std::mt19937 rng, rngk;
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip;
+bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip;
 uint64_t recent_depth = 14;
-wxString zip_name, trash, entry_name;
+wxString zip_name, trash, entry_name, unpack;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
+wxPen big_green_pen(*wxGREEN, 4);
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings, const wxArrayString &names) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
@@ -175,6 +176,13 @@ void Peili::draw_pixs(wxPaintEvent &event)
             dc.DrawLine(0, 0, 720, 720);
             dc.DrawLine(0, 720, 720, 0);
             rip_zip = false;
+        }
+        else if(gg_zip)
+        {
+            dc.SetPen(big_green_pen);
+            dc.DrawLine(0, 360, 180, 540);
+            dc.DrawLine(180, 540, 720, 0);
+            gg_zip = false;
         }
     }
     else
@@ -432,6 +440,24 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             rip_zip = true;
             wxRenameFile(zips[cur_zip], trash + zips[cur_zip].AfterLast('\\'), false);
+            next_entry();
+            return;
+        }
+        case 'Q': // Move ZIP file to unpack folder.
+        {
+            if(!unpack)
+            {
+                wxDirDialog dialog(this, "Choose folder for unpack");
+                if(dialog.ShowModal() == wxID_OK)
+                {
+                    unpack = dialog.GetPath() + "\\";
+                    wxFileConfig settings("Kuvastin", "Tapsa");
+                    settings.Write("Unpack", unpack);
+                }
+                else return;
+            }
+            gg_zip = true;
+            wxRenameFile(zips[cur_zip], unpack + zips[cur_zip].AfterLast('\\'), false);
             next_entry();
             return;
         }
