@@ -60,6 +60,7 @@ public:
     inline void stop_flow();
     void unzip_image(int = 0, wxString = "");
     void next_entry();
+    void remove_zip();
 
     static const wxString APP_VER, HOT_KEYS;
 

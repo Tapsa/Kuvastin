@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.11.20";
+const wxString Peili::APP_VER = "2016.12.14";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -11,7 +11,7 @@ std::list<Nouto>::iterator fetch;
 std::mt19937 rng, rngk;
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip;
+bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing;
 uint64_t recent_depth = 14;
 wxString zip_name, trash, entry_name, unpack;
 wxBitmap unzipped;
@@ -154,7 +154,7 @@ void Peili::load_pix(wxTimerEvent &event)
 void Peili::draw_pixs(wxPaintEvent &event)
 {
     wxBufferedPaintDC dc(mirror);
-    if(clean_mirror)
+    if(clean_mirror && !queuing)
     {
         dc.SetBackground(*wxBLACK_BRUSH);
         dc.Clear();
@@ -169,6 +169,7 @@ void Peili::draw_pixs(wxPaintEvent &event)
             dc.SetBackgroundMode(wxPENSTYLE_SOLID);
             dc.DrawText(zip_name, 2, 2);
             dc.DrawText(entry_name, 2, 20);
+            queuing = false;
         }
         if(rip_zip)
         {
@@ -268,6 +269,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
+                if(queuing) return;
                 unzip_image(--cur_entry);
             }
             else
@@ -282,6 +284,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
+                if(queuing) return;
                 unzip_image(++cur_entry);
             }
             else
@@ -295,6 +298,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
+                if(queuing) return;
                 if(zip_list)
                 {
                     if(zip_list->GetCount())
@@ -322,6 +326,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
+                if(queuing) return;
                 if(zip_list)
                 {
                     if(zip_list->GetCount())
@@ -348,6 +353,7 @@ void Peili::keyboard(wxKeyEvent &event)
         {
             if(unzipping)
             {
+                if(queuing) return;
                 unzip_image(-1);
             }
             else
@@ -427,19 +433,7 @@ void Peili::keyboard(wxKeyEvent &event)
         }
         case 'X': // Delete ZIP file.
         {
-            if(!trash)
-            {
-                wxDirDialog dialog(this, "Choose folder for trash");
-                if(dialog.ShowModal() == wxID_OK)
-                {
-                    trash = dialog.GetPath() + "\\";
-                    wxFileConfig settings("Kuvastin", "Tapsa");
-                    settings.Write("Trash", trash);
-                }
-                else return;
-            }
-            rip_zip = true;
-            wxRenameFile(zips[cur_zip], trash + zips[cur_zip].AfterLast('\\'), false);
+            remove_zip();
             next_entry();
             return;
         }
@@ -501,6 +495,17 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             else return;
         }
+        case 'V':
+        {
+            upscale = !upscale;
+            if(unzipping)
+            {
+                unzip_image(cur_entry);
+                return;
+            }
+            load_image();
+            break;
+        }
         case 'U':
         {
             zip_list = new wxListBox(panel, wxID_ANY, wxDefaultPosition, wxSize(200, -1));
@@ -509,6 +514,7 @@ void Peili::keyboard(wxKeyEvent &event)
 
             wxFileConfig settings("Kuvastin", "Tapsa");
             settings.Read("Trash", &trash);
+            settings.Read("Unpack", &unpack);
             wxFlexGridSizer *options_grid = new wxFlexGridSizer(2);
             wxStaticText *label1 = new wxStaticText(panel, wxID_ANY, " Path to zips ");
             wxDirPickerCtrl *path2zips = new wxDirPickerCtrl(panel, wxID_ANY, settings.Read("Path2zips", ""));
@@ -574,6 +580,7 @@ void Peili::keyboard(wxKeyEvent &event)
             zip_list->Bind(wxEVT_LISTBOX, [=](wxCommandEvent &event)
             {
                 cur_zip = event.GetSelection();
+                // Get entry name
                 unzip_image();
                 split_entry_name();
             });
@@ -606,6 +613,23 @@ void Peili::keyboard(wxKeyEvent &event)
     timer_queue.Start(0);
 }
 
+void Peili::remove_zip()
+{
+    if(!trash)
+    {
+        wxDirDialog dialog(this, "Choose folder for trash");
+        if(dialog.ShowModal() == wxID_OK)
+        {
+            trash = dialog.GetPath() + "\\";
+            wxFileConfig settings("Kuvastin", "Tapsa");
+            settings.Write("Trash", trash);
+        }
+        else return;
+    }
+    rip_zip = true;
+    wxRenameFile(zips[cur_zip], trash + zips[cur_zip].AfterLast('\\'), false);
+}
+
 void Peili::unzip_image(int random, wxString name)
 {
     cur_entry = 0;
@@ -616,53 +640,65 @@ void Peili::unzip_image(int random, wxString name)
         mirror->Refresh();
         return;
     }
-    wxFFileInputStream necessity(zips[cur_zip]);
-    wxZipInputStream zip(necessity);
-    int mirror_width, mirror_height;
-    mirror->GetClientSize(&mirror_width, &mirror_height);
-    entry.reset(zip.GetNextEntry());
-    if(name.Len())
+    bool remove = false;
     {
-        while(entry && name != entry->GetName())
+        wxFFileInputStream necessity(zips[cur_zip]);
+        wxZipInputStream zip(necessity);
+        int mirror_width, mirror_height;
+        mirror->GetClientSize(&mirror_width, &mirror_height);
+        entry.reset(zip.GetNextEntry());
+        if(name.Len())
         {
-            entry.reset(zip.GetNextEntry());
-            ++cur_entry;
+            while(entry && name != entry->GetName())
+            {
+                entry.reset(zip.GetNextEntry());
+                ++cur_entry;
+            }
         }
+        else if(random < 0)
+        {
+            int dart = rng() % zip.GetTotalEntries();
+            while(--dart > 0)
+            {
+                entry.reset(zip.GetNextEntry());
+                ++cur_entry;
+            }
+        }
+        else if(random > 0)
+        {
+            while(entry && random > cur_entry)
+            {
+                entry.reset(zip.GetNextEntry());
+                ++cur_entry;
+            }
+        }
+        if(entry)
+        {
+            wxImage pic(zip, wxBITMAP_TYPE_JPEG);
+            zip_name = zips[cur_zip].AfterLast('\\');
+            entry_name = entry->GetName();
+            int img_width = pic.GetWidth(), img_height = pic.GetHeight();
+            int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
+            if(img_width < 640 || img_height < 640)
+            {
+                remove = true;
+            }
+            if(upscale || leftover_width < 0 || leftover_height < 0)
+            {
+                float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
+                img_width *= prop;
+                img_height *= prop;
+                pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
+            }
+            queuing = true;
+            unzipped = wxBitmap(pic);
+        }
+        else clean_mirror = true;
     }
-    else if(random < 0)
+    if(allow_del && remove)
     {
-        int dart = rng() % zip.GetTotalEntries();
-        while(--dart > 0)
-        {
-            entry.reset(zip.GetNextEntry());
-            ++cur_entry;
-        }
+        remove_zip();
     }
-    else if(random > 0)
-    {
-        while(entry && random > cur_entry)
-        {
-            entry.reset(zip.GetNextEntry());
-            ++cur_entry;
-        }
-    }
-    if(entry)
-    {
-        wxImage pic(zip, wxBITMAP_TYPE_JPEG);
-        zip_name = zips[cur_zip].AfterLast('\\');
-        entry_name = entry->GetName();
-        int img_width = pic.GetWidth(), img_height = pic.GetHeight();
-        int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
-        if(leftover_width < 0 || leftover_height < 0)
-        {
-            float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
-            img_width *= prop;
-            img_height *= prop;
-            pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
-        }
-        unzipped = wxBitmap(pic);
-    }
-    else clean_mirror = true;
     next_entry();
 }
 
@@ -776,7 +812,7 @@ DONE_RIGHT:
             continue;
         }
         int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
-        if(leftover_width < 0 || leftover_height < 0)
+        if(upscale || leftover_width < 0 || leftover_height < 0)
         {
             float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
             img_width *= prop;
