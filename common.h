@@ -18,17 +18,11 @@
 #include <wx/filename.h>
 #include <wx/filepicker.h>
 //#include <wx/tooltip.h>
-#include <wx/timer.h>
-#include <wx/image.h>
 #include <wx/dcbuffer.h>
 #include <wx/dir.h>
-//#include <wx/thread.h>
-#include <wx/textdlg.h>
-#include <wx/dirdlg.h>
 #include <wx/tokenzr.h>
 #include <wx/wfstream.h>
 #include <wx/zipstrm.h>
-#include <wx/log.h>
 
 // #define NDEBUG
 #include <cassert>
