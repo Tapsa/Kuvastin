@@ -1,8 +1,7 @@
-buildD/
-buildR/
-build/
-debug/
-release/
+DLL Debug/
+DLL Release/
+Debug/
+Release/
 *.lnk
 
 # User-specific files

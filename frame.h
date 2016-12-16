@@ -90,7 +90,7 @@ protected:
 private:
     void OnExit(wxCloseEvent &event);
     void draw_pixs(wxPaintEvent &event);
-    void clear_mirror(wxEraseEvent &event){}
+    void clear_mirror(wxEraseEvent&){}
     void load_pix(wxTimerEvent &event);
     void load_dir(wxTimerEvent &event);
     void load_merged(wxTimerEvent &event);

@@ -122,7 +122,7 @@ void Peili::load_pixs()
     if(auto_dir_reload) timer_dir.Start(time_dir);
 }
 
-void Peili::load_merged(wxTimerEvent &event)
+void Peili::load_merged(wxTimerEvent&)
 {
     timer_queue.Stop();
     if(loading_pixs)
@@ -136,13 +136,13 @@ void Peili::load_merged(wxTimerEvent &event)
     }
 }
 
-void Peili::load_dir(wxTimerEvent &event)
+void Peili::load_dir(wxTimerEvent&)
 {
     timer_dir.Stop();
     load_pixs();
 }
 
-void Peili::load_pix(wxTimerEvent &event)
+void Peili::load_pix(wxTimerEvent&)
 {
     timer_pix.Stop();
     if(pixs.IsEmpty()) return;
@@ -151,7 +151,7 @@ void Peili::load_pix(wxTimerEvent &event)
     load_image();
 }
 
-void Peili::draw_pixs(wxPaintEvent &event)
+void Peili::draw_pixs(wxPaintEvent&)
 {
     wxBufferedPaintDC dc(mirror);
     if(clean_mirror && !queuing)
@@ -220,30 +220,30 @@ void Peili::advance()
     }
 }
 
-void Peili::left_down(wxMouseEvent &event)
+void Peili::left_down(wxMouseEvent&)
 {
     ++lmb_down;
     mirror->SetFocus();
 }
 
-void Peili::left_up(wxMouseEvent &event)
+void Peili::left_up(wxMouseEvent&)
 {
     ++lmb_up;
 }
 
-void Peili::left_click(wxMouseEvent &event)
+void Peili::left_click(wxMouseEvent&)
 {
     full_screen = !full_screen;
     ShowFullScreen(full_screen);
 }
 
-void Peili::middle_click(wxMouseEvent &event)
+void Peili::middle_click(wxMouseEvent&)
 {
     wxCloseEvent ce;
     OnExit(ce);
 }
 
-/*void Peili::right_click(wxMouseEvent &event)
+/*void Peili::right_click(wxMouseEvent&)
 {
     wait_threads();
     unique_pixs.clear();
@@ -933,7 +933,7 @@ Lataaja::~Lataaja()
     kehys->pix_loader = 0;
 }
 
-void Peili::thread_done(wxThreadEvent &event)
+void Peili::thread_done(wxThreadEvent&)
 {
     mirror->Refresh();
     /*else if(unique)
@@ -994,7 +994,7 @@ void Peili::wait_threads()
     }
 }
 
-void Peili::OnExit(wxCloseEvent &event)
+void Peili::OnExit(wxCloseEvent&)
 {
     wait_threads();
     Destroy();
