@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.12.14";
+const wxString Peili::APP_VER = "2016.12.29";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -31,7 +31,7 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
         else if("-autodel" == settings) allow_del = true;
     }
     fetch = fetches.begin();
-    filter_by_name = keywords.size();
+    filter_by_name = keywords.size() != 0;
 
     panel = new wxPanel(this);
     sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -72,6 +72,7 @@ void Peili::load_pixs()
     {
         wxCriticalSectionLocker lock(fetch_cs);
         // Reset prefetched file buffer.
+        if(fetches.size())
         fetches.erase(std::next(fetch, 1), fetches.end());
         working = true;
     }
@@ -207,6 +208,7 @@ void Peili::advance()
 {
     wxCriticalSectionLocker lock(fetch_cs);
     // Advance if there is next item ready. TODO: Wait until it is ready?
+    if(fetches.size())
     if(std::next(fetch, 1) != fetches.end())
     {
         // Skip first item as it will be popped out.
@@ -490,7 +492,7 @@ void Peili::keyboard(wxKeyEvent &event)
             if(dialog.ShowModal() == wxID_OK)
             {
                 keywords = wxStringTokenize(dialog.GetValue(), "|");
-                filter_by_name = keywords.size();
+                filter_by_name = keywords.size() != 0;
                 break;
             }
             else return;

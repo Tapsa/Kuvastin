@@ -2,6 +2,7 @@ DLL Debug/
 DLL Release/
 Debug/
 Release/
+enc_temp_folder/
 *.lnk
 
 # User-specific files
