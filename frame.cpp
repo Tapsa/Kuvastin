@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2016.12.29";
+const wxString Peili::APP_VER = "2017.4.2";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -12,7 +12,7 @@ std::mt19937 rng, rngk;
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing;
-uint64_t recent_depth = 14;
+int recent_depth = 14;
 wxString zip_name, trash, entry_name, unpack;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
@@ -364,6 +364,18 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             return;
         }
+        case 'P':
+        {
+            if(unzipping)
+            {
+                unzip_image(cur_entry);
+            }
+            else
+            {
+                load_image();
+            }
+            return;
+        }
         case ' ':
         {
             if(unzipping)
@@ -668,7 +680,7 @@ void Peili::unzip_image(int random, wxString name)
         }
         else if(random > 0)
         {
-            while(entry && random > cur_entry)
+            while(entry && size_t(random) > cur_entry)
             {
                 entry.reset(zip.GetNextEntry());
                 ++cur_entry;
@@ -754,7 +766,7 @@ wxThread::ExitCode Noutaja::Entry()
             for(int w = 0; w < width; w += density)
             {
                 unsigned char red = pic.GetRed(w, h);
-                if(abs(val - red) > max_diff)
+                if(std::abs(val - red) > max_diff)
                 {
                     crop_top = h;
                     goto DONE_TOP;
@@ -765,7 +777,7 @@ DONE_TOP:
             for(int h = crop_top; h < height; h += density)
             {
                 unsigned char red = pic.GetRed(w, h);
-                if(abs(val - red) > max_diff)
+                if(std::abs(val - red) > max_diff)
                 {
                     crop_left = w;
                     goto DONE_LEFT;
@@ -777,7 +789,7 @@ DONE_LEFT:
             for(int w = width; w > 0; w -= density)
             {
                 unsigned char red = pic.GetRed(w, h);
-                if(abs(val - red) > max_diff)
+                if(std::abs(val - red) > max_diff)
                 {
                     crop_bottom = height - h + 1;
                     goto DONE_BOTTOM;
@@ -788,7 +800,7 @@ DONE_BOTTOM:
             for(int h = height - crop_bottom; h > 0; h -= density)
             {
                 unsigned char red = pic.GetRed(w, h);
-                if(abs(val - red) > max_diff)
+                if(std::abs(val - red) > max_diff)
                 {
                     crop_right = width - w + 1;
                     goto DONE_RIGHT;
@@ -816,7 +828,7 @@ DONE_RIGHT:
         int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
         if(upscale || leftover_width < 0 || leftover_height < 0)
         {
-            float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
+            float prop = std::fmin((float) mirror_width / img_width, (float) mirror_height / img_height);
             img_width *= prop;
             img_height *= prop;
             pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
