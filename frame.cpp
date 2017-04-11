@@ -8,7 +8,7 @@ const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app
 "\nM = Reload folders periodically\nR = Reload folders";
 std::list<Nouto> fetches;
 std::list<Nouto>::iterator fetch;
-std::mt19937 rng, rngk;
+std::random_device rng, rngk; // std::mt19937
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing;
@@ -76,8 +76,8 @@ void Peili::load_pixs()
         fetches.erase(std::next(fetch, 1), fetches.end());
         working = true;
     }
-    rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    rngk.seed(rng());
+    //rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
+    //rngk.seed(rng());
     {
         wxCriticalSectionLocker lock(folder_cs);
         ++loading_pixs;
@@ -465,6 +465,7 @@ void Peili::keyboard(wxKeyEvent &event)
                 else return;
             }
             gg_zip = true;
+            if(wxFileName(zips[cur_zip]).FileExists())
             wxRenameFile(zips[cur_zip], unpack + zips[cur_zip].AfterLast('\\'), false);
             next_entry();
             return;
@@ -641,6 +642,7 @@ void Peili::remove_zip()
         else return;
     }
     rip_zip = true;
+    if(wxFileName(zips[cur_zip]).FileExists())
     wxRenameFile(zips[cur_zip], trash + zips[cur_zip].AfterLast('\\'), false);
 }
 
