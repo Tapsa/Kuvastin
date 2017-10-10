@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2017.4.2";
+const wxString Peili::APP_VER = "2017.10.10";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -11,8 +11,8 @@ std::list<Nouto>::iterator fetch;
 std::random_device rng, rngk; // std::mt19937
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing;
-int recent_depth = 14;
+bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing, randomize = true;
+int recent_depth = 14, buffer_size = 0x20, trailer_size = 0x30;
 wxString zip_name, trash, entry_name, unpack;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
@@ -215,9 +215,9 @@ void Peili::advance()
         std::advance(fetch, fetch == fetches.end() ? 2 : 1);
         int trail = std::distance(fetches.begin(), fetch);
         bar->SetStatusText("Trail: " + format_int(trail), 2);
-        if(trail > 0x2F)
+        if(trail > trailer_size)
         {
-            fetches.erase(fetches.begin(), std::prev(fetch, 0x1F));
+            fetches.erase(fetches.begin(), std::prev(fetch, buffer_size));
         }
     }
 }
@@ -499,6 +499,25 @@ void Peili::keyboard(wxKeyEvent &event)
             filter_by_name = !filter_by_name;
             break;
         }
+        case 'I':
+        {
+            randomize = !randomize;
+            break;
+        }
+        case 'Y':
+        {
+            buffer_size <<= 1;
+            trailer_size <<= 1;
+            if ( buffer_size > 0x80 )
+            {
+                buffer_size = 0x20;
+            }
+            if ( trailer_size > 0xC0 )
+            {
+                trailer_size = 0x30;
+            }
+            return;
+        }
         case 'O':
         {
             wxTextEntryDialog dialog(this, "New keywords, separated by |");
@@ -735,7 +754,7 @@ void Peili::load_image()
 
 wxThread::ExitCode Noutaja::Entry()
 {
-    for(size_t i = 0; kehys->working && i < 0x2F; ++i)
+    for(int i = 0; kehys->working && i < trailer_size; ++i)
     {
         kehys->folder_cs.Enter();
         size_t rng_beg = 0, rng_cnt = kehys->pixs.GetCount();
@@ -750,7 +769,9 @@ wxThread::ExitCode Noutaja::Entry()
             kehys->folder_cs.Leave();
             continue;
         }
-        wxString picname(kehys->pixs[rng_beg + rngk() % rng_cnt]);
+        static size_t current;
+        size_t next = randomize ? rngk() : ++current;
+        wxString picname(kehys->pixs[rng_beg + next % rng_cnt]);
 
         wxLogNull log;
         wxImage pic(picname, wxBITMAP_TYPE_JPEG);
@@ -847,7 +868,7 @@ wxThread::ExitCode Lataaja::Entry()
     int buffer = std::distance(fetch, fetches.end());
     kehys->bar->SetStatusText("Buffer: " + format_int(buffer), 3);
     // Not prefetching and should prefetch more.
-    if(!kehys->fetcher && buffer < 0x1F)
+    if(!kehys->fetcher && buffer < buffer_size)
     {
         kehys->fetcher = new Noutaja(kehys);
         if(kehys->fetcher->Run() != wxTHREAD_NO_ERROR)

@@ -11,7 +11,7 @@ bool Kuvastin::OnInit()
     Peili* window;
     wxString settings;
     wxArrayString paths, names;
-    for(size_t a = 1; a < wxApp::argc; ++a)
+    for(int a = 1; a < wxApp::argc; ++a)
     {
         if('-' == wxApp::argv[a][0]) settings = wxApp::argv[a];
         else if(':' == wxApp::argv[a][1]) paths.Add(wxApp::argv[a]);
