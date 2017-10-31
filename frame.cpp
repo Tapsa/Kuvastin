@@ -1,14 +1,14 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2017.10.10";
+const wxString Peili::APP_VER = "2017.10.31";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
 "\nM = Reload folders periodically\nR = Reload folders";
 std::list<Nouto> fetches;
 std::list<Nouto>::iterator fetch;
-std::random_device rng, rngk; // std::mt19937
+std::random_device rng;// std::mt19937
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing, randomize = true;
@@ -20,7 +20,7 @@ wxPen big_green_pen(*wxGREEN, 4);
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings, const wxArrayString &names) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
-    dirs_pixs(paths), keywords(names), time_pix(1000), time_dir(144000)
+    dirs_pixs(paths), keywords(names), time_pix(3000), time_dir(144000)
 {
     wxBusyCursor WaitCursor;
     SetIcon(wxIcon(AppIcon_xpm));
@@ -77,7 +77,6 @@ void Peili::load_pixs()
         working = true;
     }
     //rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    //rngk.seed(rng());
     {
         wxCriticalSectionLocker lock(folder_cs);
         ++loading_pixs;
@@ -770,7 +769,7 @@ wxThread::ExitCode Noutaja::Entry()
             continue;
         }
         static size_t current;
-        size_t next = randomize ? rngk() : ++current;
+        size_t next = randomize ? rng() : ++current;
         wxString picname(kehys->pixs[rng_beg + next % rng_cnt]);
 
         wxLogNull log;
