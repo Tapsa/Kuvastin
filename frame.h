@@ -81,8 +81,9 @@ public:
     std::vector<size_t> path_ranges;
 
 protected:
-    Noutaja *fetcher = 0;
-    Lataaja *pix_loader = 0;
+    Noutaja *fetcher = nullptr;
+    Lataaja *pix_loader = nullptr;
+    wxFrame *minion = nullptr;
     wxCriticalSection folder_cs, fetch_cs;
     friend class Noutaja;
     friend class Lataaja;
@@ -90,10 +91,12 @@ protected:
 private:
     void OnExit(wxCloseEvent &event);
     void draw_pixs(wxPaintEvent &event);
+    void draw_side(wxPaintEvent &event);
     void clear_mirror(wxEraseEvent&){}
     void load_pix(wxTimerEvent &event);
     void load_dir(wxTimerEvent &event);
     void load_merged(wxTimerEvent &event);
+    void load_zip(wxTimerEvent &event);
     void left_click(wxMouseEvent &event);
     void left_down(wxMouseEvent &event);
     void left_up(wxMouseEvent &event);
@@ -106,7 +109,7 @@ private:
     wxSizer *sizer, *spreader;
     wxStatusBar *bar;
     wxListBox *zip_list = 0;
-    wxTimer timer_pix, timer_dir, timer_queue;
+    wxTimer timer_pix, timer_dir, timer_queue, timer_zip;
     std::set<std::string> unique_pixs;
 };
 

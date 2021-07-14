@@ -59,6 +59,7 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
     timer_pix.Bind(wxEVT_TIMER, &Peili::load_pix, this);
     timer_dir.Bind(wxEVT_TIMER, &Peili::load_dir, this);
     timer_queue.Bind(wxEVT_TIMER, &Peili::load_merged, this);
+    timer_zip.Bind(wxEVT_TIMER, &Peili::load_zip, this);
     Bind(wxEVT_COMMAND_THREAD, &Peili::thread_done, this);
 
     wxToolTip::SetDelay(200);
@@ -151,6 +152,14 @@ void Peili::load_pix(wxTimerEvent&)
     load_image();
 }
 
+void Peili::load_zip(wxTimerEvent&)
+{
+    wxKeyEvent event(wxEVT_KEY_DOWN);
+    event.m_keyCode = 'D';
+    keyboard(event);
+    timer_zip.Start(time_pix);
+}
+
 void Peili::draw_pixs(wxPaintEvent&)
 {
     wxBufferedPaintDC dc(mirror);
@@ -165,11 +174,36 @@ void Peili::draw_pixs(wxPaintEvent&)
     {
         if(unzipped.IsOk())
         {
-            dc.DrawBitmap(unzipped, 0, 0, true);
-            dc.SetBackgroundMode(wxPENSTYLE_SOLID);
-            dc.DrawText(zip_name, 2, 2);
-            dc.DrawText(entry_name, 2, 20);
-            queuing = false;
+            bool draw = true;
+            if(minion)
+            {
+                int width, height;
+                dc.GetSize(&width, &height);
+                if(unzipped.GetWidth() < unzipped.GetHeight())
+                {
+                    if(width > height)
+                    {
+                        draw = false;
+                        minion->Refresh();
+                    }
+                }
+                else
+                {
+                    if(width < height)
+                    {
+                        draw = false;
+                        minion->Refresh();
+                    }
+                }
+            }
+            if(draw)
+            {
+                dc.DrawBitmap(unzipped, 0, 0, true);
+                dc.SetBackgroundMode(wxPENSTYLE_SOLID);
+                dc.DrawText(zip_name, 2, 2);
+                dc.DrawText(entry_name, 2, 20);
+                queuing = false;
+            }
         }
         if(rip_zip)
         {
@@ -200,6 +234,30 @@ void Peili::draw_pixs(wxPaintEvent&)
         dc.DrawRectangle(0, 0, 120, 20);
         wxString lmb = "DOWN " + format_int(lmb_down) + ", UP " + format_int(lmb_up);
         dc.DrawText(lmb, 2, 2);
+    }
+}
+
+void Peili::draw_side(wxPaintEvent&)
+{
+    wxBufferedPaintDC dc(minion);
+    if(unzipping)
+    {
+        if(unzipped.IsOk())
+        {
+            dc.DrawBitmap(unzipped, 0, 0, true);
+            dc.SetBackgroundMode(wxPENSTYLE_SOLID);
+            dc.DrawText(zip_name, 2, 2);
+            dc.DrawText(entry_name, 2, 20);
+            queuing = false;
+        }
+    }
+    else
+    {
+        bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
+        if(fetch != fetches.end() && fetch->file.IsOk())
+        {
+            dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
+        }
     }
 }
 
@@ -236,6 +294,10 @@ void Peili::left_click(wxMouseEvent&)
 {
     full_screen = !full_screen;
     ShowFullScreen(full_screen);
+    if(minion)
+    {
+        minion->ShowFullScreen(full_screen);
+    }
 }
 
 void Peili::middle_click(wxMouseEvent&)
@@ -355,7 +417,8 @@ void Peili::keyboard(wxKeyEvent &event)
             if(unzipping)
             {
                 if(queuing) return;
-                unzip_image(-1);
+                //unzip_image(-1);
+                timer_zip.Start(time_pix);
             }
             else
             {
@@ -641,6 +704,24 @@ void Peili::keyboard(wxKeyEvent &event)
             unzipping = true;
             return;
         }
+        case 'H':
+        {
+            if (!minion)
+            {
+                minion = new wxFrame(this, wxID_ANY, "Sivupeili", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT);
+                minion->SetSize(720, 900);
+                minion->SetIcon(wxIcon(AppIcon_xpm));
+                minion->Show(true);
+                minion->Bind(wxEVT_PAINT, &Peili::draw_side, this);
+            }
+            else
+            {
+                minion->Destroy();
+                delete minion;
+                minion = nullptr;
+            }
+           return;
+        }
         default: return;
     }
     timer_queue.Start(0);
@@ -678,8 +759,12 @@ void Peili::unzip_image(int random, wxString name)
     {
         wxFFileInputStream necessity(zips[cur_zip]);
         wxZipInputStream zip(necessity);
-        int mirror_width, mirror_height;
+        int mirror_width, mirror_height, minion_width = 0, minion_height = 0;
         mirror->GetClientSize(&mirror_width, &mirror_height);
+        if(minion)
+        {
+            minion->GetClientSize(&minion_width, &minion_height);
+        }
         entry.reset(zip.GetNextEntry());
         if(name.Len())
         {
@@ -712,6 +797,24 @@ void Peili::unzip_image(int random, wxString name)
             zip_name = zips[cur_zip].AfterLast('\\');
             entry_name = entry->GetName();
             int img_width = pic.GetWidth(), img_height = pic.GetHeight();
+            // Determine which surface suits the photo better.
+            if(img_width < img_height)
+            {
+                if(mirror_width > minion_width)
+                {
+                    mirror_width = minion_width;
+                    mirror_height = minion_height;
+                }
+            }
+            else
+            {
+                if(mirror_width < minion_width)
+                {
+                    mirror_width = minion_width;
+                    mirror_height = minion_height;
+                }
+            }
+            // Do the scaling.
             int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
             if(img_width < 640 || img_height < 640)
             {
@@ -777,8 +880,12 @@ wxThread::ExitCode Noutaja::Entry()
         kehys->folder_cs.Leave();
         if(!pic.IsOk()) continue;
 
-        int mirror_width, mirror_height;
+        int mirror_width, mirror_height, minion_width = 0, minion_height = 0;
         kehys->mirror->GetClientSize(&mirror_width, &mirror_height);
+        if(kehys->minion)
+        {
+            kehys->minion->GetClientSize(&minion_width, &minion_height);
+        }
         // Crop edges.
         {
             unsigned char val = pic.GetRed(0, 0), max_diff = 12;
@@ -1033,5 +1140,9 @@ void Peili::wait_threads()
 void Peili::OnExit(wxCloseEvent&)
 {
     wait_threads();
+    if(minion)
+    {
+        minion->Destroy();
+    }
     Destroy();
 }
