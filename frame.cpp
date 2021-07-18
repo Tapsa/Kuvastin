@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2017.10.31";
+const wxString Peili::APP_VER = "2021.7.18";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -99,7 +99,7 @@ void Peili::load_pixs()
                     {
                         wxDateTime created;
                         wxFileName(name).GetTimes(0, 0, &created);
-                        if(wxDateTime::GetTimeNow() - created.GetTicks() > 28800 + 86400 * recent_depth) continue;
+                        if(wxDateTime::GetTimeNow() - created.GetTicks() > 28800 + 86400 * time_t(recent_depth)) continue;
                         pixs.Add(name);
                     }
                 }
@@ -825,7 +825,10 @@ void Peili::unzip_image(int random, wxString name)
                 float prop = leftover_width < leftover_height ? (float) mirror_width / img_width : (float) mirror_height / img_height;
                 img_width *= prop;
                 img_height *= prop;
-                pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
+                if (img_width != 0 && img_height != 0)
+                {
+                   pic.Rescale(img_width, img_height, wxIMAGE_QUALITY_BICUBIC);
+                }
             }
             queuing = true;
             unzipped = wxBitmap(pic);

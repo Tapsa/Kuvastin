@@ -64,7 +64,7 @@ public:
 
     static const wxString APP_VER, HOT_KEYS;
 
-    enum Scene
+    enum class Scene
     {
         LEFT_TO_RIGHT,
         RIGHT_TO_LEFT,
@@ -77,7 +77,8 @@ public:
     bool full_screen = false, clean_mirror = false, unique = false, dupl_found = false, allow_del = false, flow = true,
         equal_mix = false, cnt_clicks = false, auto_dir_reload = false, working = true, show_status_bar = false;
     std::chrono::time_point<std::chrono::system_clock> load_begin;
-    unsigned pix, lmb_down = 0, lmb_up = 0, shotgun = AVOID_LAST;
+    unsigned lmb_down = 0, lmb_up = 0;
+    Scene shotgun = Scene::AVOID_LAST;
     std::vector<size_t> path_ranges;
 
 protected:
@@ -101,7 +102,7 @@ private:
     void left_down(wxMouseEvent &event);
     void left_up(wxMouseEvent &event);
     void middle_click(wxMouseEvent &event);
-    void right_click(wxMouseEvent &event);
+    //void right_click(wxMouseEvent &event);
     void thread_done(wxThreadEvent &event);
     void keyboard(wxKeyEvent &event);
 

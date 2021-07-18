@@ -1,11 +1,12 @@
-DLL Debug/
-DLL Release/
+# Folders
 Debug/
 Release/
 enc_temp_folder/
-*.lnk
+.vs/
 
 # User-specific files
+*.lnk
+*.log
 *.suo
 *.user
 *.userosscache
