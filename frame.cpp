@@ -160,6 +160,65 @@ void Peili::load_zip(wxTimerEvent&)
     timer_zip.Start(time_pix);
 }
 
+void Peili::position_image(const wxWindow *window, const wxBitmap *bitmap)
+{
+    int mirror_width, mirror_height;
+    window->GetClientSize(&mirror_width, &mirror_height);
+    const int img_width = bitmap->GetWidth(), img_height = bitmap->GetHeight();
+    const int leftover_width = mirror_width - img_width, leftover_height = mirror_height - img_height;
+    int xpos = 0, ypos = 0;
+    switch (shotgun)
+    {
+        case Peili::Scene::ALL_OVER:
+        {
+            xpos = leftover_width > 0 ? rng() % leftover_width : 0;
+            ypos = leftover_height > 0 ? rng() % leftover_height : 0;
+            break;
+        }
+        case Peili::Scene::AVOID_LAST:
+        {
+            const int box[4][4] =
+            {
+                {0, 0, std::max(0, last_x1 - img_width + 1), leftover_height + 1},
+                {last_x2, 0, std::max(0, mirror_width - last_x2 - img_width + 1), leftover_height + 1},
+                {box[0][2], 0, std::max(0, std::min(leftover_width + 1, last_x2) - box[0][2]), std::max(0, last_y1 - img_height + 1)},
+                {box[0][2], last_y2, box[2][2], std::max(0, mirror_height - last_y2 - img_height + 1)}
+            };
+            const int props[4] = { box[0][2] * box[0][3], box[1][2] * box[1][3], box[2][2] * box[2][3], box[3][2] * box[3][3] };
+            const int total = props[0] + props[1] + props[2] + props[3];
+            if (!total)
+            {
+                if (std::max(last_x1, mirror_width - last_x2) < std::max(last_y1, mirror_height - last_y2))
+                {
+                    ypos = last_y1 > mirror_height - last_y2 ? 0 : leftover_height;
+                    xpos = rng() % std::max(1, leftover_width);
+                }
+                else
+                {
+                    xpos = last_x1 > mirror_width - last_x2 ? 0 : leftover_width;
+                    ypos = rng() % std::max(1, leftover_height);
+                }
+                break;
+            }
+            int area = rng() % total;
+            for (size_t i = 0; i < 4; area -= props[i], ++i)
+            {
+                if (area < props[i])
+                {
+                    xpos = box[i][0] + rng() % box[i][2];
+                    ypos = box[i][1] + rng() % box[i][3];
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    last_x1 = xpos;
+    last_y1 = ypos;
+    last_x2 = xpos + img_width;
+    last_y2 = ypos + img_height;
+}
+
 void Peili::draw_pixs(wxPaintEvent&)
 {
     wxBufferedPaintDC dc(mirror);
@@ -198,7 +257,8 @@ void Peili::draw_pixs(wxPaintEvent&)
             }
             if(draw)
             {
-                dc.DrawBitmap(unzipped, 0, 0, true);
+                position_image(mirror, &unzipped);
+                dc.DrawBitmap(unzipped, last_x1, last_y1, true);
                 dc.SetBackgroundMode(wxPENSTYLE_SOLID);
                 dc.DrawText(zip_name, 2, 2);
                 dc.DrawText(entry_name, 2, 20);
@@ -225,6 +285,7 @@ void Peili::draw_pixs(wxPaintEvent&)
         bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
         if(fetch != fetches.end() && fetch->file.IsOk())
         {
+            position_image(mirror, &fetch->file);
             dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
         }
     }
@@ -244,7 +305,8 @@ void Peili::draw_side(wxPaintEvent&)
     {
         if(unzipped.IsOk())
         {
-            dc.DrawBitmap(unzipped, 0, 0, true);
+            position_image(minion, &unzipped);
+            dc.DrawBitmap(unzipped, last_x1, last_y1, true);
             dc.SetBackgroundMode(wxPENSTYLE_SOLID);
             dc.DrawText(zip_name, 2, 2);
             dc.DrawText(entry_name, 2, 20);
@@ -256,6 +318,7 @@ void Peili::draw_side(wxPaintEvent&)
         bar->SetStatusText("Images shown: " + format_int(++drawn_cnt), 0);
         if(fetch != fetches.end() && fetch->file.IsOk())
         {
+            position_image(minion, &fetch->file);
             dc.DrawBitmap(fetch->file, last_x1, last_y1, true);
         }
     }
@@ -1001,70 +1064,6 @@ wxThread::ExitCode Lataaja::Entry()
         wxQueueEvent(kehys, new wxThreadEvent());
         return wxThread::ExitCode(0x4E20 + fetches.size());
     }
-    const int mirror_width = fetch->mirror_width, mirror_height = fetch->mirror_height;
-    const int img_width = fetch->img_width, img_height = fetch->img_height;
-    const int leftover_width = fetch->leftover_width, leftover_height = fetch->leftover_height;
-    int xpos = 0, ypos = 0;
-    switch(kehys->shotgun)
-    {
-        case Peili::Scene::ALL_OVER:
-        {
-            xpos = leftover_width > 0 ? rng() % leftover_width : 0;
-            ypos = leftover_height > 0 ? rng() % leftover_height : 0;
-            break;
-        }
-        case Peili::Scene::AVOID_LAST:
-        {
-            const int box[4][4] =
-            {
-                {0, 0, std::max(0, last_x1 - img_width + 1), leftover_height + 1},
-                {last_x2, 0, std::max(0, mirror_width - last_x2 - img_width + 1), leftover_height + 1},
-                {box[0][2], 0, std::max(0, std::min(leftover_width + 1, last_x2) - box[0][2]), std::max(0, last_y1 - img_height + 1)},
-                {box[0][2], last_y2, box[2][2], std::max(0, mirror_height - last_y2 - img_height + 1)}
-            };
-            //std::memcpy(last_box, box, 16 * sizeof(int));
-            const int props[4] = {box[0][2] * box[0][3], box[1][2] * box[1][3], box[2][2] * box[2][3], box[3][2] * box[3][3]};
-            const int total = props[0] + props[1] + props[2] + props[3];
-            /*wxMessageBox("Boxes\nX left "+format_int(box[0][0])+", "+format_int(box[0][1])+" -> "+format_int(box[0][2] + box[0][0])+
-            ", "+format_int(box[0][3] + box[0][1])+"\nX right "+format_int(box[1][0])+", "+format_int(box[1][1])+
-            " -> "+format_int(box[1][2] + box[1][0])+", "+format_int(box[1][3] + box[1][1])+"\nY up "+format_int(box[2][0])+
-            ", "+format_int(box[2][1])+" -> "+format_int(box[2][2] + box[2][0])+", "+format_int(box[2][3] + box[2][1])+
-            "\nY down "+format_int(box[3][0])+", "+format_int(box[3][1])+" -> "+format_int(box[3][2] + box[3][0])+
-            ", "+format_int(box[3][3] + box[3][1])+"\n% left "+format_int(props[0])+"\n% right "+format_int(props[1])+
-            "\n% up "+format_int(props[2])+"\n% down "+format_int(props[3]));*/
-            if(!total)
-            {
-                if(std::max(last_x1, mirror_width - last_x2) < std::max(last_y1, mirror_height - last_y2))
-                {
-                    //wxMessageBox("No space, corner Y");
-                    ypos = last_y1 > mirror_height - last_y2 ? 0 : leftover_height;
-                    xpos = rng() % std::max(1, leftover_width);
-                }
-                else
-                {
-                    //wxMessageBox("No space, corner X");
-                    xpos = last_x1 > mirror_width - last_x2 ? 0 : leftover_width;
-                    ypos = rng() % std::max(1, leftover_height);
-                }
-                break;
-            }
-            int area = rng() % total;
-            for(size_t i = 0; i < 4; area -= props[i], ++i)
-            {
-                if(area < props[i])
-                {
-                    xpos = box[i][0] + rng() % box[i][2];
-                    ypos = box[i][1] + rng() % box[i][3];
-                    break;
-                }
-            }
-            break;
-        }
-    }
-    last_x1 = xpos;
-    last_y1 = ypos;
-    last_x2 = xpos + img_width;
-    last_y2 = ypos + img_height;
     if(kehys->working) wxQueueEvent(kehys, new wxThreadEvent());
     return wxThread::ExitCode(0x2710 + fetches.size());
 }
