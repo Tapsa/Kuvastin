@@ -1,7 +1,7 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2021.7.18";
+const wxString Peili::APP_VER = "2021.8.8";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
@@ -411,7 +411,11 @@ void Peili::keyboard(wxKeyEvent &event)
             if(unzipping)
             {
                 if(queuing) return;
-                unzip_image(++cur_entry);
+                if(randomize && !zips.empty())
+                {
+                    cur_zip = rng() % zips.size();
+                }
+                unzip_image(randomize ? -1 : ++cur_entry);
             }
             else
             {
@@ -860,21 +864,24 @@ void Peili::unzip_image(int random, wxString name)
             zip_name = zips[cur_zip].AfterLast('\\');
             entry_name = entry->GetName();
             int img_width = pic.GetWidth(), img_height = pic.GetHeight();
-            // Determine which surface suits the photo better.
-            if(img_width < img_height)
+            if (minion)
             {
-                if(mirror_width > minion_width)
+                // Determine which surface suits the photo better.
+                if (img_width < img_height)
                 {
-                    mirror_width = minion_width;
-                    mirror_height = minion_height;
+                    if (mirror_width > minion_width)
+                    {
+                        mirror_width = minion_width;
+                        mirror_height = minion_height;
+                    }
                 }
-            }
-            else
-            {
-                if(mirror_width < minion_width)
+                else
                 {
-                    mirror_width = minion_width;
-                    mirror_height = minion_height;
+                    if (mirror_width < minion_width)
+                    {
+                        mirror_width = minion_width;
+                        mirror_height = minion_height;
+                    }
                 }
             }
             // Do the scaling.
@@ -896,7 +903,11 @@ void Peili::unzip_image(int random, wxString name)
             queuing = true;
             unzipped = wxBitmap(pic);
         }
-        else clean_mirror = true;
+        else
+        {
+            cur_entry = 0;
+            clean_mirror = true;
+        }
     }
     if(allow_del && remove)
     {
