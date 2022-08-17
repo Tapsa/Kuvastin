@@ -1,22 +1,46 @@
 #include "frame.h"
 #include "AppIcon.xpm"
 
-const wxString Peili::APP_VER = "2021.8.8";
+const wxString Peili::APP_VER = "2022.6.28";
 const wxString Peili::HOT_KEYS = "Shortcuts\nLMBx2 = Full screen\nMMB = Exit app\nRMB = Remove duplicates"
 "\nA = Previous file\nD = Next file\nE = Next random file\nS = Pause show\nW = Continue show"
 "\nSPACE = Show current file in folder\nB = Show status bar\nC = Count LMB clicks\nL = Change screenplay"
 "\nM = Reload folders periodically\nR = Reload folders";
-std::list<Nouto> fetches;
-std::list<Nouto>::iterator fetch;
 std::random_device rng;// std::mt19937
 std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
-bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing, randomize = true;
+bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing, randomize = true, wander = true;
 int recent_depth = 14, buffer_size = 0x20, trailer_size = 0x30;
 wxString zip_name, trash, entry_name, unpack;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
 wxPen big_green_pen(*wxGREEN, 4);
+
+class Nouto
+{
+public:
+    Nouto(const wxImage &f, const wxString &n, int v1, int v2, int v3, int v4, int v5, int v6) :
+        file(f), filename(n), mirror_width(v1), mirror_height(v2), img_width(v3), img_height(v4), leftover_width(v5), leftover_height(v6) {}
+    const wxBitmap file;
+    const wxString filename;
+    const int mirror_width, mirror_height, img_width, img_height, leftover_width, leftover_height;
+};
+
+std::list<Nouto> fetches;
+std::list<Nouto>::iterator fetch;
+
+class Unzip
+{
+public:
+    Unzip(const wxBitmap &f, const wxString &n, int v1, int v2) :
+        file(f), filename(n), zip_num(v1), entry_num(v2) {}
+    const wxBitmap file;
+    const wxString filename;
+    const int zip_num, entry_num;
+};
+
+std::list<Unzip> unzips;
+std::list<Unzip>::iterator unzip;
 
 Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &settings, const wxArrayString &names) :
     wxFrame(0, wxID_ANY, title, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE | wxBG_STYLE_PAINT),
@@ -31,6 +55,7 @@ Peili::Peili(const wxString &title, const wxArrayString &paths, const wxString &
         else if("-autodel" == settings) allow_del = true;
     }
     fetch = fetches.begin();
+    unzip = unzips.begin();
     filter_by_name = keywords.size() != 0;
 
     panel = new wxPanel(this);
@@ -328,14 +353,13 @@ void Peili::advance()
 {
     wxCriticalSectionLocker lock(fetch_cs);
     // Advance if there is next item ready. TODO: Wait until it is ready?
-    if(fetches.size())
-    if(std::next(fetch, 1) != fetches.end())
+    if (!fetches.empty() && std::next(fetch, 1) != fetches.end())
     {
         // Skip first item as it will be popped out.
         std::advance(fetch, fetch == fetches.end() ? 2 : 1);
         int trail = std::distance(fetches.begin(), fetch);
         bar->SetStatusText("Trail: " + format_int(trail), 2);
-        if(trail > trailer_size)
+        if (trail > trailer_size)
         {
             fetches.erase(fetches.begin(), std::prev(fetch, buffer_size));
         }
@@ -385,6 +409,7 @@ void Peili::stop_flow()
 {
     flow = false;
     timer_pix.Stop();
+    timer_zip.Stop();
 }
 
 void Peili::keyboard(wxKeyEvent &event)
@@ -393,33 +418,81 @@ void Peili::keyboard(wxKeyEvent &event)
     {
         case 'A':
         {
-            if(unzipping)
+            if (unzipping)
             {
-                if(queuing) return;
-                unzip_image(--cur_entry);
+                if (queuing) return;
+                if (zip_list || event.ShiftDown())
+                {
+                    unzip_image(--cur_entry);
+                }
+                else
+                {
+                    stop_flow();
+                    if (unzip != unzips.begin() && std::prev(unzip, 1) != unzips.end())
+                    {
+                        --unzip;
+                        if (unzip->zip_num < zips.size())
+                        {
+                            cur_zip = unzip->zip_num;
+                            assert(zips[cur_zip] == unzip->filename);
+                        }
+                        unzip_image(unzip->entry_num);
+                    }
+                }
             }
             else
             {
                 stop_flow();
-                if(std::prev(fetch, 1) != fetches.end()) --fetch;
+                if (fetch != fetches.begin() && std::prev(fetch, 1) != fetches.end())
+                {
+                    --fetch;
+                }
                 load_image();
             }
             return;
         }
         case 'D':
         {
-            if(unzipping)
+            if (unzipping)
             {
-                if(queuing) return;
-                if(randomize && !zips.empty())
+                if (queuing) return;
+                bool beyond = !event.ShiftDown();
+                if (!unzips.empty() && std::next(unzip, 1) != unzips.end() && beyond && wander)
                 {
-                    cur_zip = rng() % zips.size();
+                    ++unzip;
+                    if (unzip->zip_num < zips.size())
+                    {
+                        cur_zip = unzip->zip_num;
+                        assert(zips[cur_zip] == unzip->filename);
+                    }
+                    unzip_image(unzip->entry_num);
                 }
-                unzip_image(randomize ? -1 : ++cur_entry);
+                else
+                {
+                    if (randomize && wander && !zips.empty() && beyond)
+                    {
+                        cur_zip = rng() % zips.size();
+                    }
+                    unzip_image(randomize && beyond ? -1 : ++cur_entry);
+                    if (beyond)
+                    {
+                        unzips.emplace_back(unzipped, zips[cur_zip], cur_zip, cur_entry);
+                        unzip = unzips.end();
+                        int trail = std::distance(unzips.begin(), --unzip);
+                        bar->SetStatusText("Trail: " + format_int(trail), 2);
+                        if (trail > trailer_size)
+                        {
+                            unzips.erase(unzips.begin(), std::prev(unzip, buffer_size));
+                        }
+                    }
+                }
             }
             else
             {
-                if(std::next(fetch, 1) != fetches.end()) ++fetch;
+                if (std::next(fetch, 1) != fetches.end())
+                {
+                    ++fetch;
+                }
                 load_image();
             }
             return;
@@ -469,8 +542,15 @@ void Peili::keyboard(wxKeyEvent &event)
                 }
                 else
                 {
-                    cur_zip = (cur_zip + 1) % zips.GetCount();
-                    unzip_image();
+                    if (timer_zip.IsRunning())
+                    {
+                        stop_flow();
+                    }
+                    else
+                    {
+                        cur_zip = (cur_zip + 1) % zips.GetCount();
+                        unzip_image();
+                    }
                 }
             }
             else
@@ -486,6 +566,7 @@ void Peili::keyboard(wxKeyEvent &event)
                 if(queuing) return;
                 //unzip_image(-1);
                 timer_zip.Start(time_pix);
+                wander = !event.ShiftDown();
             }
             else
             {
