@@ -11,7 +11,7 @@ std::unique_ptr<wxZipEntry> entry;
 int last_x1, last_y1, last_x2, last_y2, loading_pixs;
 bool filter_by_time, filter_by_size, filter_by_name, unzipping, rip_zip, gg_zip, upscale, queuing, randomize = true, wander = true;
 int recent_depth = 14, buffer_size = 0x20, trailer_size = 0x30;
-wxString zip_name, trash, entry_name, unpack;
+wxString zip_name, zip_path, trash, entry_name, unpack;
 wxBitmap unzipped;
 wxPen big_red_pen(*wxRED, 2);
 wxPen big_green_pen(*wxGREEN, 4);
@@ -474,7 +474,7 @@ void Peili::keyboard(wxKeyEvent &event)
                         cur_zip = rng() % zips.size();
                     }
                     unzip_image(randomize && beyond ? -1 : ++cur_entry);
-                    if (beyond)
+                    if (beyond && !zips.empty())
                     {
                         unzips.emplace_back(unzipped, zips[cur_zip], cur_zip, cur_entry);
                         unzip = unzips.end();
@@ -489,7 +489,7 @@ void Peili::keyboard(wxKeyEvent &event)
             }
             else
             {
-                if (std::next(fetch, 1) != fetches.end())
+                if (!fetches.empty() && std::next(fetch, 1) != fetches.end())
                 {
                     ++fetch;
                 }
@@ -647,9 +647,18 @@ void Peili::keyboard(wxKeyEvent &event)
                 wxDirDialog dialog(this, "Folder containing ZIPs");
                 if(dialog.ShowModal() == wxID_OK)
                 {
+                    zip_path = dialog.GetPath();
                     zips.Clear();
                     cur_zip = 0;
-                    wxDir::GetAllFiles(dialog.GetPath(), &zips, "*.zip");
+                    if (filter_by_name)
+                    for (const wxString &key : keywords)
+                    {
+                        wxDir::GetAllFiles(zip_path, &zips, "*" + key + "*.zip");
+                    }
+                    else
+                    {
+                        wxDir::GetAllFiles(zip_path, &zips, "*.zip");
+                    }
                     unzip_image();
                 }
             }
@@ -735,6 +744,23 @@ void Peili::keyboard(wxKeyEvent &event)
             {
                 keywords = wxStringTokenize(dialog.GetValue(), "|");
                 filter_by_name = keywords.size() != 0;
+                if (unzipping)
+                {
+                    wait_threads();
+                    zips.Clear();
+                    cur_zip = 0;
+                    if (filter_by_name)
+                    for (const wxString &key : keywords)
+                    {
+                        wxDir::GetAllFiles(zip_path, &zips, "*" + key + "*.zip");
+                    }
+                    else
+                    {
+                        wxDir::GetAllFiles(zip_path, &zips, "*.zip");
+                    }
+                    unzip_image();
+                }
+                return;
                 break;
             }
             else return;
